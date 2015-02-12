@@ -16,6 +16,8 @@ limitations under the License. */
 package siesta
 
 import (
+	crand "crypto/rand"
+	"math/rand"
 	"reflect"
 	"testing"
 )
@@ -30,4 +32,20 @@ func checkErr(t *testing.T, err error) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+func randomBytes(n int) []byte {
+	b := make([]byte, n)
+	crand.Read(b)
+	return b
+}
+
+func randomString(n int) string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZйцукенгшщзхъфывапролджэжячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ0123456789!@#$%^&*()")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)[:n]
 }

@@ -24,6 +24,7 @@ type Decoder interface {
 	GetInt16() (int16, error)
 	GetInt32() (int32, error)
 	GetInt64() (int64, error)
+	GetBytes() ([]byte, error)
 	GetString() (string, error)
 }
 
@@ -111,7 +112,7 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	length := int(l)
 
 	switch {
-	case length <= 1:
+	case length < 1:
 		return "", nil
 	case length > this.remaining():
 		this.pos = len(this.raw)
