@@ -141,25 +141,25 @@ func TestSizingEncoder(t *testing.T) {
 	for i := 0; i < numValues; i++ {
 		int8encoder.WriteInt8(0)
 	}
-	assert(t, int8encoder.Size(), numValues)
+	assert(t, int(int8encoder.Size()), numValues)
 
 	int16encoder := NewSizingEncoder()
 	for i := 0; i < numValues; i++ {
 		int16encoder.WriteInt16(0)
 	}
-	assert(t, int16encoder.Size(), numValues*2)
+	assert(t, int(int16encoder.Size()), numValues*2)
 
 	int32encoder := NewSizingEncoder()
 	for i := 0; i < numValues; i++ {
 		int32encoder.WriteInt32(0)
 	}
-	assert(t, int32encoder.Size(), numValues*4)
+	assert(t, int(int32encoder.Size()), numValues*4)
 
 	int64encoder := NewSizingEncoder()
 	for i := 0; i < numValues; i++ {
 		int64encoder.WriteInt64(0)
 	}
-	assert(t, int64encoder.Size(), numValues*8)
+	assert(t, int(int64encoder.Size()), numValues*8)
 
 	stringEncoder := NewSizingEncoder()
 	for i := 0; i <= numValues; i++ {
@@ -167,7 +167,7 @@ func TestSizingEncoder(t *testing.T) {
 	}
 	//we encode N strings with length from 0 to N, so the Size() should return (numValues+1)*2 which is size for int16 string lengths including the empty one
 	//and N*(N+1)/2 for actual string values
-	assert(t, stringEncoder.Size(), (numValues+1)*2+((numValues*(numValues+1))/2))
+	assert(t, int(stringEncoder.Size()), (numValues+1)*2+((numValues*(numValues+1))/2))
 
 	bytesEncoder := NewSizingEncoder()
 	for i := 0; i <= numValues; i++ {
@@ -175,5 +175,5 @@ func TestSizingEncoder(t *testing.T) {
 	}
 	//we encode N arrays with length from 0 to N, so the Size() should return (numValues+1)*4 which is size for int32 arrays lengths including the empty one
 	//and N*(N+1)/2 for actual arrays
-	assert(t, bytesEncoder.Size(), (numValues+1)*4+((numValues*(numValues+1))/2))
+	assert(t, int(bytesEncoder.Size()), (numValues+1)*4+((numValues*(numValues+1))/2))
 }

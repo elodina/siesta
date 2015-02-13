@@ -26,6 +26,9 @@ type Encoder interface {
 	WriteInt64(int64)
 	WriteBytes([]byte)
 	WriteString(string)
+
+	// Returns the size in bytes of this encoder
+	Size() int32
 }
 
 type BinaryEncoder struct {
@@ -71,6 +74,10 @@ func (this *BinaryEncoder) WriteBytes(value []byte) {
 	this.pos += len(value)
 }
 
+func (this *BinaryEncoder) Size() int32 {
+	return int32(len(this.buffer))
+}
+
 type SizingEncoder struct {
 	size int
 }
@@ -105,6 +112,6 @@ func (this *SizingEncoder) WriteBytes(value []byte) {
 	this.size += len(value)
 }
 
-func (this *SizingEncoder) Size() int {
-	return this.size
+func (this *SizingEncoder) Size() int32 {
+	return int32(this.size)
 }
