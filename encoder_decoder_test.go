@@ -99,18 +99,18 @@ func TestInt64EncodingDecoding(t *testing.T) {
 }
 
 func TestStringEncodingDecoding(t *testing.T) {
-	buffer := make([]byte, numValues*2+((numValues*(numValues+1))/2))
+	buffer := make([]byte, (numValues+1)*2+((numValues*(numValues+1))/2))
 	encoder := NewBinaryEncoder(buffer)
 
-	randValues := make([]string, numValues)
-	for i := 0; i < numValues; i++ {
+	randValues := make([]string, numValues+1)
+	for i := 0; i <= numValues; i++ {
 		randValue := randomString(i)
 		encoder.WriteString(randValue)
 		randValues[i] = randValue
 	}
 
 	decoder := NewBinaryDecoder(buffer)
-	for i := 0; i < numValues; i++ {
+	for i := 0; i <= numValues; i++ {
 		value, err := decoder.GetString()
 		checkErr(t, err)
 		assert(t, value, randValues[i])
@@ -134,4 +134,46 @@ func TestBytesEncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+}
+
+func TestSizingEncoder(t *testing.T) {
+	int8encoder := NewSizingEncoder()
+	for i := 0; i < numValues; i++ {
+		int8encoder.WriteInt8(0)
+	}
+	assert(t, int8encoder.Size(), numValues)
+
+	int16encoder := NewSizingEncoder()
+	for i := 0; i < numValues; i++ {
+		int16encoder.WriteInt16(0)
+	}
+	assert(t, int16encoder.Size(), numValues*2)
+
+	int32encoder := NewSizingEncoder()
+	for i := 0; i < numValues; i++ {
+		int32encoder.WriteInt32(0)
+	}
+	assert(t, int32encoder.Size(), numValues*4)
+
+	int64encoder := NewSizingEncoder()
+	for i := 0; i < numValues; i++ {
+		int64encoder.WriteInt64(0)
+	}
+	assert(t, int64encoder.Size(), numValues*8)
+
+	stringEncoder := NewSizingEncoder()
+	for i := 0; i <= numValues; i++ {
+		stringEncoder.WriteString(randomString(i))
+	}
+	//we encode N strings with length from 0 to N, so the Size() should return (numValues+1)*2 which is size for int16 string lengths including the empty one
+	//and N*(N+1)/2 for actual string values
+	assert(t, stringEncoder.Size(), (numValues+1)*2+((numValues*(numValues+1))/2))
+
+	bytesEncoder := NewSizingEncoder()
+	for i := 0; i <= numValues; i++ {
+		bytesEncoder.WriteBytes(randomBytes(i))
+	}
+	//we encode N arrays with length from 0 to N, so the Size() should return (numValues+1)*4 which is size for int32 arrays lengths including the empty one
+	//and N*(N+1)/2 for actual arrays
+	assert(t, bytesEncoder.Size(), (numValues+1)*4+((numValues*(numValues+1))/2))
 }
