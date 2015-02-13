@@ -49,3 +49,19 @@ func randomString(n int) string {
 	}
 	return string(b)[:n]
 }
+
+func testRequest(t *testing.T, request Request, expected []byte) {
+	sizing := NewSizingEncoder()
+	request.Write(sizing)
+	bytes := make([]byte, sizing.Size())
+	encoder := NewBinaryEncoder(bytes)
+	request.Write(encoder)
+
+	assert(t, bytes, expected)
+}
+
+func decode(t *testing.T, response Response, bytes []byte) {
+	decoder := NewBinaryDecoder(bytes)
+	err := response.Read(decoder)
+	checkErr(t, err)
+}
