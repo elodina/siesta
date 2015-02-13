@@ -42,27 +42,20 @@ func NewBinaryEncoder(buffer []byte) *BinaryEncoder {
 func (this *BinaryEncoder) WriteInt8(value int8) {
 	this.buffer[this.pos] = byte(value)
 	this.pos += 1
-	//	this.writer.Write([]byte{byte(value)})
 }
 
 func (this *BinaryEncoder) WriteInt16(value int16) {
-	//	buf := make([]byte, 2)
 	binary.BigEndian.PutUint16(this.buffer[this.pos:], uint16(value))
-	//	this.writer.Write(buf)
 	this.pos += 2
 }
 
 func (this *BinaryEncoder) WriteInt32(value int32) {
-	//	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(this.buffer[this.pos:], uint32(value))
-	//	this.writer.Write(buf)
 	this.pos += 4
 }
 
 func (this *BinaryEncoder) WriteInt64(value int64) {
-	//	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(this.buffer[this.pos:], uint64(value))
-	//	this.writer.Write(buf)
 	this.pos += 8
 }
 
@@ -70,12 +63,48 @@ func (this *BinaryEncoder) WriteString(value string) {
 	this.WriteInt16(int16(len(value)))
 	copy(this.buffer[this.pos:], value)
 	this.pos += len(value)
-	//	this.writer.Write([]byte(value))
 }
 
 func (this *BinaryEncoder) WriteBytes(value []byte) {
 	this.WriteInt32(int32(len(value)))
-	//	this.writer.Write(value)
 	copy(this.buffer[this.pos:], value)
 	this.pos += len(value)
+}
+
+type SizingEncoder struct {
+	size int
+}
+
+func NewSizingEncoder() *SizingEncoder {
+	return &SizingEncoder{}
+}
+
+func (this *SizingEncoder) WriteInt8(int8) {
+	this.size += 1
+}
+
+func (this *SizingEncoder) WriteInt16(int16) {
+	this.size += 2
+}
+
+func (this *SizingEncoder) WriteInt32(int32) {
+	this.size += 4
+}
+
+func (this *SizingEncoder) WriteInt64(int64) {
+	this.size += 8
+}
+
+func (this *SizingEncoder) WriteString(value string) {
+	this.WriteInt16(int16(len(value)))
+	this.size += len(value)
+}
+
+func (this *SizingEncoder) WriteBytes(value []byte) {
+	this.WriteInt32(int32(len(value)))
+	this.size += len(value)
+}
+
+func (this *SizingEncoder) Size() int {
+	return this.size
 }
