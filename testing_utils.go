@@ -24,7 +24,7 @@ import (
 	"runtime"
 )
 
-const TCPListenerAddress = "localhost:4455"
+const TCPListenerAddress = "localhost:8093"
 
 func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
@@ -74,7 +74,7 @@ func decode(t *testing.T, response Response, bytes []byte) {
 
 func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) {
 	netName := "tcp"
-	addr, _ := net.ResolveTCPAddr(netName, "localhost:4455")
+	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)
 	listener, err := net.ListenTCP(netName, addr)
 	if err != nil {
 		t.Errorf("Unable to start tcp request listener: %s", err)
