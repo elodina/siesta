@@ -24,7 +24,7 @@ import (
 	"runtime"
 )
 
-const TCPListenerAddress = "localhost:8093"
+const TCPListenerAddress = "localhost:0"
 
 func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
@@ -72,7 +72,31 @@ func decode(t *testing.T, response Response, bytes []byte) {
 	checkErr(t, err)
 }
 
-func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) {
+func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) net.Listener {
+	netName := "tcp"
+	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)
+	listener, err := net.ListenTCP(netName, addr)
+	if err != nil {
+		t.Errorf("Unable to start tcp request listener: %s", err)
+	}
+	go func () {
+		buffer := make([]byte, bufferSize)
+		conn, err := listener.AcceptTCP()
+		if err != nil {
+			t.Error(err)
+		}
+		_, err = conn.Read(buffer)
+		if err != nil {
+			t.Error(err)
+		}
+
+		resultChannel <- buffer
+	}()
+
+	return listener
+}
+
+func startTCPListener(t *testing.T) net.Listener {
 	netName := "tcp"
 	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)
 	listener, err := net.ListenTCP(netName, addr)
@@ -80,15 +104,5 @@ func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel cha
 		t.Errorf("Unable to start tcp request listener: %s", err)
 	}
 
-	buffer := make([]byte, bufferSize)
-	conn, err := listener.AcceptTCP()
-	if err != nil {
-		t.Error(err)
-	}
-	_, err = conn.Read(buffer)
-	if err != nil {
-		t.Error(err)
-	}
-
-	resultChannel <- buffer
+	return listener
 }

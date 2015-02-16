@@ -23,9 +23,9 @@ import (
 func TestConnectionPoolBorrowedIsConnected(t *testing.T) {
 	request := randomBytes(10)
 	resultChannel := make(chan []byte)
-	go awaitForTCPRequestAndReturn(t, len(request), resultChannel)
+	listener := awaitForTCPRequestAndReturn(t, len(request), resultChannel)
 
-	pool := NewConnectionPool(TCPListenerAddress, 1, true, 1*time.Second)
+	pool := NewConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -39,10 +39,13 @@ func TestConnectionPoolBorrowedIsConnected(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Error("Timed out")
 	}
+
+	listener.Close()
 }
 
 func TestConnectionPoolReturnedIsReusable(t *testing.T) {
-	pool := NewConnectionPool(TCPListenerAddress, 1, true, 1*time.Second)
+	listener := startTCPListener(t)
+	pool := NewConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -53,10 +56,12 @@ func TestConnectionPoolReturnedIsReusable(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	listener.Close()
 }
 
 func TestConnectionPoolBorrowMoreThanAllowed(t *testing.T) {
-	pool := NewConnectionPool(TCPListenerAddress, 2, true, 1*time.Second)
+	listener := startTCPListener(t)
+	pool := NewConnectionPool(listener.Addr().String(), 2, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -85,11 +90,13 @@ func TestConnectionPoolBorrowMoreThanAllowed(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Unable to borrow connection from pool after it was returned")
 	}
+	listener.Close()
 }
 
 func TestConnectionPoolReturnMoreThanAllowed(t *testing.T) {
+	listener := startTCPListener(t)
 	size := 1
-	pool := NewConnectionPool(TCPListenerAddress, size, true, 1*time.Second)
+	pool := NewConnectionPool(listener.Addr().String(), size, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -99,4 +106,5 @@ func TestConnectionPoolReturnMoreThanAllowed(t *testing.T) {
 	pool.Return(conn)
 
 	assert(t, len(pool.connections), size)
+	listener.Close()
 }
