@@ -27,7 +27,7 @@ type ConnectionPool struct {
 	conns              int
 	keepAlive          bool
 	keepAlivePeriod    time.Duration
-	connections        []net.Conn
+	connections        []*net.TCPConn
 	lock               sync.Mutex
 	connReleasedCond   *sync.Cond
 }
@@ -39,10 +39,10 @@ func NewConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePer
 		conns: 0,
 		keepAlive: keepAlive,
 		keepAlivePeriod: keepAlivePeriod,
-		connections: make([]*net.Conn, 0),
+		connections: make([]*net.TCPConn, 0),
 	}
 
-	pool.connReleasedCond = sync.NewCond(pool.lock)
+	pool.connReleasedCond = sync.NewCond(&pool.lock)
 
 	return pool
 }
@@ -59,7 +59,7 @@ func (this *ConnectionPool) Borrow() (conn *net.TCPConn, err error) {
 		} else {
 			conn, err = this.connect()
 			if err != nil {
-				return nil, err
+				return
 			}
 			this.conns++
 		}
