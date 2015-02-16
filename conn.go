@@ -17,29 +17,29 @@ package siesta
 
 import (
 	"net"
-	"time"
 	"sync"
+	"time"
 )
 
 type ConnectionPool struct {
-	connectStr         string
-	size               int
-	conns              int
-	keepAlive          bool
-	keepAlivePeriod    time.Duration
-	connections        []*net.TCPConn
-	lock               sync.Mutex
-	connReleasedCond   *sync.Cond
+	connectStr       string
+	size             int
+	conns            int
+	keepAlive        bool
+	keepAlivePeriod  time.Duration
+	connections      []*net.TCPConn
+	lock             sync.Mutex
+	connReleasedCond *sync.Cond
 }
 
 func NewConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePeriod time.Duration) *ConnectionPool {
 	pool := &ConnectionPool{
-		connectStr: connectStr,
-		size: size,
-		conns: 0,
-		keepAlive: keepAlive,
+		connectStr:      connectStr,
+		size:            size,
+		conns:           0,
+		keepAlive:       keepAlive,
 		keepAlivePeriod: keepAlivePeriod,
-		connections: make([]*net.TCPConn, 0),
+		connections:     make([]*net.TCPConn, 0),
 	}
 
 	pool.connReleasedCond = sync.NewCond(&pool.lock)
@@ -69,8 +69,10 @@ func (this *ConnectionPool) Borrow() (conn *net.TCPConn, err error) {
 
 func (this *ConnectionPool) Return(conn *net.TCPConn) {
 	inLock(&this.lock, func() {
-		this.connections = append(this.connections, conn)
-		this.connReleasedCond.Broadcast()
+		if len(this.connections) < this.conns {
+			this.connections = append(this.connections, conn)
+			this.connReleasedCond.Broadcast()
+		}
 	})
 }
 

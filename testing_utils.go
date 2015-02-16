@@ -18,10 +18,13 @@ package siesta
 import (
 	crand "crypto/rand"
 	"math/rand"
+	"net"
 	"reflect"
 	"testing"
 	"runtime"
 )
+
+const TCPListenerAddress = "localhost:4455"
 
 func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
@@ -67,4 +70,25 @@ func decode(t *testing.T, response Response, bytes []byte) {
 	decoder := NewBinaryDecoder(bytes)
 	err := response.Read(decoder)
 	checkErr(t, err)
+}
+
+func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) {
+	netName := "tcp"
+	addr, _ := net.ResolveTCPAddr(netName, "localhost:4455")
+	listener, err := net.ListenTCP(netName, addr)
+	if err != nil {
+		t.Errorf("Unable to start tcp request listener: %s", err)
+	}
+
+	buffer := make([]byte, bufferSize)
+	conn, err := listener.AcceptTCP()
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = conn.Read(buffer)
+	if err != nil {
+		t.Error(err)
+	}
+
+	resultChannel <- buffer
 }

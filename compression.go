@@ -18,8 +18,8 @@ package siesta
 type CompressionCodec int
 
 const (
-	None CompressionCodec   = 0
-	GZip CompressionCodec   = 1
+	None   CompressionCodec = 0
+	GZip   CompressionCodec = 1
 	Snappy CompressionCodec = 2
-	LZ4 CompressionCodec    = 3
+	LZ4    CompressionCodec = 3
 )

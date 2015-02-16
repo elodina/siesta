@@ -60,18 +60,18 @@ var ConsumerCoordinatorNotAvailableCode = errors.New("Offsets topic has not yet 
 
 var NotCoordinatorForConsumerCode = errors.New("There is no coordinator for this consumer.")
 
-var BrokerErrors = map[int]error {
+var BrokerErrors = map[int]error{
 	-1: Unknown,
-	0: NoError,
-	1: OffsetOutOfRange,
-	2: InvalidMessage,
-	3: UnknownTopicOrPartition,
-	4: InvalidMessageSize,
-	5: LeaderNotAvailable,
-	6: NotLeaderForPartition,
-	7: RequestTimedOut,
-	8: BrokerNotAvailable,
-	9: ReplicaNotAvailable,
+	0:  NoError,
+	1:  OffsetOutOfRange,
+	2:  InvalidMessage,
+	3:  UnknownTopicOrPartition,
+	4:  InvalidMessageSize,
+	5:  LeaderNotAvailable,
+	6:  NotLeaderForPartition,
+	7:  RequestTimedOut,
+	8:  BrokerNotAvailable,
+	9:  ReplicaNotAvailable,
 	10: MessageSizeTooLarge,
 	11: StaleControllerEpochCode,
 	12: OffsetMetadataTooLargeCode,
