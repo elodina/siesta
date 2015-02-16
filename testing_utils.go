@@ -20,17 +20,20 @@ import (
 	"math/rand"
 	"reflect"
 	"testing"
+	"runtime"
 )
 
 func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("Expected %v, actual %v", expected, actual)
+		_, fn, line, _ := runtime.Caller(1)
+		t.Errorf("Expected %v, actual %v\n@%s:%d", expected, actual, fn, line)
 	}
 }
 
 func checkErr(t *testing.T, err error) {
 	if err != nil {
-		t.Error(err)
+		_, fn, line, _ := runtime.Caller(1)
+		t.Errorf("%s\n @%s:%d", err, fn, line)
 	}
 }
 
