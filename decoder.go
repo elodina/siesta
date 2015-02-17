@@ -26,6 +26,7 @@ type Decoder interface {
 	GetInt64() (int64, error)
 	GetBytes() ([]byte, error)
 	GetString() (string, error)
+	Remaining() int
 }
 
 type BinaryDecoder struct {
@@ -40,7 +41,7 @@ func NewBinaryDecoder(raw []byte) *BinaryDecoder {
 }
 
 func (this *BinaryDecoder) GetInt8() (int8, error) {
-	if this.remaining() < 1 {
+	if this.Remaining() < 1 {
 		this.pos = len(this.raw)
 		return -1, EOF
 	}
@@ -50,7 +51,7 @@ func (this *BinaryDecoder) GetInt8() (int8, error) {
 }
 
 func (this *BinaryDecoder) GetInt16() (int16, error) {
-	if this.remaining() < 2 {
+	if this.Remaining() < 2 {
 		this.pos = len(this.raw)
 		return -1, EOF
 	}
@@ -60,7 +61,7 @@ func (this *BinaryDecoder) GetInt16() (int16, error) {
 }
 
 func (this *BinaryDecoder) GetInt32() (int32, error) {
-	if this.remaining() < 4 {
+	if this.Remaining() < 4 {
 		this.pos = len(this.raw)
 		return -1, EOF
 	}
@@ -70,7 +71,7 @@ func (this *BinaryDecoder) GetInt32() (int32, error) {
 }
 
 func (this *BinaryDecoder) GetInt64() (int64, error) {
-	if this.remaining() < 8 {
+	if this.Remaining() < 8 {
 		this.pos = len(this.raw)
 		return -1, EOF
 	}
@@ -93,7 +94,7 @@ func (this *BinaryDecoder) GetBytes() ([]byte, error) {
 		return nil, nil
 	case length == 0:
 		return make([]byte, 0), nil
-	case length > this.remaining():
+	case length > this.Remaining():
 		this.pos = len(this.raw)
 		return nil, EOF
 	}
@@ -114,7 +115,7 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	switch {
 	case length < 1:
 		return "", nil
-	case length > this.remaining():
+	case length > this.Remaining():
 		this.pos = len(this.raw)
 		return "", EOF
 	}
@@ -123,6 +124,6 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	return value, nil
 }
 
-func (this *BinaryDecoder) remaining() int {
+func (this *BinaryDecoder) Remaining() int {
 	return len(this.raw) - this.pos
 }

@@ -20,8 +20,8 @@ import (
 	"math/rand"
 	"net"
 	"reflect"
-	"testing"
 	"runtime"
+	"testing"
 )
 
 const TCPListenerAddress = "localhost:0"
@@ -30,6 +30,13 @@ func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
 		_, fn, line, _ := runtime.Caller(1)
 		t.Errorf("Expected %v, actual %v\n@%s:%d", expected, actual, fn, line)
+	}
+}
+
+func assertFatal(t *testing.T, actual interface{}, expected interface{}) {
+	if !reflect.DeepEqual(actual, expected) {
+		_, fn, line, _ := runtime.Caller(1)
+		t.Fatalf("Expected %v, actual %v\n@%s:%d", expected, actual, fn, line)
 	}
 }
 
@@ -79,7 +86,7 @@ func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel cha
 	if err != nil {
 		t.Errorf("Unable to start tcp request listener: %s", err)
 	}
-	go func () {
+	go func() {
 		buffer := make([]byte, bufferSize)
 		conn, err := listener.AcceptTCP()
 		if err != nil {

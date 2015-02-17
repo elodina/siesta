@@ -39,36 +39,36 @@ func TestTopicMetadataRequest(t *testing.T) {
 func TestTopicMetadataResponse(t *testing.T) {
 	emptyMetadataResponse := new(TopicMetadataResponse)
 	decode(t, emptyMetadataResponse, emptyMetadataResponseBytes)
-	assert(t, len(emptyMetadataResponse.Brokers), 0)
-	assert(t, len(emptyMetadataResponse.TopicMetadata), 0)
+	assertFatal(t, len(emptyMetadataResponse.Brokers), 0)
+	assertFatal(t, len(emptyMetadataResponse.TopicMetadata), 0)
 
 	brokerMetadataResponse := new(TopicMetadataResponse)
 	decode(t, brokerMetadataResponse, brokerMetadataResponseBytes)
-	assert(t, len(brokerMetadataResponse.Brokers), 1)
+	assertFatal(t, len(brokerMetadataResponse.Brokers), 1)
 	broker := brokerMetadataResponse.Brokers[0]
 	assert(t, broker.NodeId, int32(0))
 	assert(t, broker.Host, "localhost")
 	assert(t, broker.Port, int32(9092))
-	assert(t, len(brokerMetadataResponse.TopicMetadata), 0)
+	assertFatal(t, len(brokerMetadataResponse.TopicMetadata), 0)
 
 	topicMetadataResponse := new(TopicMetadataResponse)
 	decode(t, topicMetadataResponse, topicMetadataResponseBytes)
-	assert(t, len(topicMetadataResponse.Brokers), 0)
-	assert(t, len(topicMetadataResponse.TopicMetadata), 1)
+	assertFatal(t, len(topicMetadataResponse.Brokers), 0)
+	assertFatal(t, len(topicMetadataResponse.TopicMetadata), 1)
 	meta := topicMetadataResponse.TopicMetadata[0]
 	assert(t, meta.TopicName, "logs1")
-	assert(t, meta.TopicErrorCode, int16(0))
-	assert(t, len(meta.PartitionMetadata), 2)
+	assert(t, meta.Error, NoError)
+	assertFatal(t, len(meta.PartitionMetadata), 2)
 	partition0 := meta.PartitionMetadata[1]
 	assert(t, partition0.PartitionId, int32(0))
-	assert(t, partition0.PartitionErrorCode, int16(0))
+	assert(t, partition0.Error, NoError)
 	assert(t, partition0.Isr, []int32{0})
 	assert(t, partition0.Leader, int32(0))
 	assert(t, partition0.Replicas, []int32{0})
 
 	partition1 := meta.PartitionMetadata[0]
 	assert(t, partition1.PartitionId, int32(1))
-	assert(t, partition1.PartitionErrorCode, int16(0))
+	assert(t, partition1.Error, NoError)
 	assert(t, partition1.Isr, []int32{0})
 	assert(t, partition1.Leader, int32(0))
 	assert(t, partition1.Replicas, []int32{0})

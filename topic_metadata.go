@@ -108,7 +108,7 @@ func (this *Broker) Read(decoder Decoder) error {
 }
 
 type TopicMetadata struct {
-	TopicErrorCode    int16
+	Error             error
 	TopicName         string
 	PartitionMetadata []*PartitionMetadata
 }
@@ -118,7 +118,7 @@ func (this *TopicMetadata) Read(decoder Decoder) error {
 	if err != nil {
 		return err
 	}
-	this.TopicErrorCode = errCode
+	this.Error = BrokerErrors[errCode]
 
 	topicName, err := decoder.GetString()
 	if err != nil {
@@ -145,11 +145,11 @@ func (this *TopicMetadata) Read(decoder Decoder) error {
 }
 
 type PartitionMetadata struct {
-	PartitionErrorCode int16
-	PartitionId        int32
-	Leader             int32
-	Replicas           []int32
-	Isr                []int32
+	Error       error
+	PartitionId int32
+	Leader      int32
+	Replicas    []int32
+	Isr         []int32
 }
 
 func (this *PartitionMetadata) Read(decoder Decoder) error {
@@ -157,7 +157,7 @@ func (this *PartitionMetadata) Read(decoder Decoder) error {
 	if err != nil {
 		return err
 	}
-	this.PartitionErrorCode = errCode
+	this.Error = BrokerErrors[errCode]
 
 	partition, err := decoder.GetInt32()
 	if err != nil {

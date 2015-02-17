@@ -60,7 +60,7 @@ var ConsumerCoordinatorNotAvailableCode = errors.New("Offsets topic has not yet 
 
 var NotCoordinatorForConsumerCode = errors.New("There is no coordinator for this consumer.")
 
-var BrokerErrors = map[int]error{
+var BrokerErrors = map[int16]error{
 	-1: Unknown,
 	0:  NoError,
 	1:  OffsetOutOfRange,

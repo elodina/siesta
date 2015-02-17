@@ -36,6 +36,7 @@ func (this *OffsetRequest) AddPartitionOffsetRequestInfo(topic string, partition
 }
 
 func (this *OffsetRequest) Write(encoder Encoder) {
+	//Normal client consumers should always specify ReplicaId as -1 as they have no node id
 	encoder.WriteInt32(-1)
 	encoder.WriteInt32(int32(len(this.RequestInfo)))
 
@@ -98,7 +99,7 @@ type PartitionOffsetRequestInfo struct {
 
 type PartitionOffsets struct {
 	Partition int32
-	ErrorCode int16
+	Error     error
 	Offsets   []int64
 }
 
@@ -113,7 +114,7 @@ func (this *PartitionOffsets) Read(decoder Decoder) error {
 	if err != nil {
 		return err
 	}
-	this.ErrorCode = errCode
+	this.Error = BrokerErrors[errCode]
 
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
