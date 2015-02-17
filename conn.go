@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-type ConnectionPool struct {
+type connectionPool struct {
 	connectStr       string
 	size             int
 	conns            int
@@ -32,8 +32,8 @@ type ConnectionPool struct {
 	connReleasedCond *sync.Cond
 }
 
-func NewConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePeriod time.Duration) *ConnectionPool {
-	pool := &ConnectionPool{
+func newConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePeriod time.Duration) *connectionPool {
+	pool := &connectionPool{
 		connectStr:      connectStr,
 		size:            size,
 		conns:           0,
@@ -47,7 +47,7 @@ func NewConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePer
 	return pool
 }
 
-func (this *ConnectionPool) Borrow() (conn *net.TCPConn, err error) {
+func (this *connectionPool) Borrow() (conn *net.TCPConn, err error) {
 	inLock(&this.lock, func() {
 		for this.conns >= this.size && len(this.connections) == 0 {
 			this.connReleasedCond.Wait()
@@ -67,7 +67,7 @@ func (this *ConnectionPool) Borrow() (conn *net.TCPConn, err error) {
 	return conn, err
 }
 
-func (this *ConnectionPool) Return(conn *net.TCPConn) {
+func (this *connectionPool) Return(conn *net.TCPConn) {
 	inLock(&this.lock, func() {
 		if len(this.connections) < this.conns {
 			this.connections = append(this.connections, conn)
@@ -76,7 +76,7 @@ func (this *ConnectionPool) Return(conn *net.TCPConn) {
 	})
 }
 
-func (this *ConnectionPool) connect() (*net.TCPConn, error) {
+func (this *connectionPool) connect() (*net.TCPConn, error) {
 	addr, err := net.ResolveTCPAddr("tcp", this.connectStr)
 	if err != nil {
 		return nil, err

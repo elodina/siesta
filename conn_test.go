@@ -25,7 +25,7 @@ func TestConnectionPoolBorrowedIsConnected(t *testing.T) {
 	resultChannel := make(chan []byte)
 	listener := awaitForTCPRequestAndReturn(t, len(request), resultChannel)
 
-	pool := NewConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
+	pool := newConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -45,7 +45,7 @@ func TestConnectionPoolBorrowedIsConnected(t *testing.T) {
 
 func TestConnectionPoolReturnedIsReusable(t *testing.T) {
 	listener := startTCPListener(t)
-	pool := NewConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
+	pool := newConnectionPool(listener.Addr().String(), 1, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -61,7 +61,7 @@ func TestConnectionPoolReturnedIsReusable(t *testing.T) {
 
 func TestConnectionPoolBorrowMoreThanAllowed(t *testing.T) {
 	listener := startTCPListener(t)
-	pool := NewConnectionPool(listener.Addr().String(), 2, true, 1*time.Second)
+	pool := newConnectionPool(listener.Addr().String(), 2, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
@@ -96,7 +96,7 @@ func TestConnectionPoolBorrowMoreThanAllowed(t *testing.T) {
 func TestConnectionPoolReturnMoreThanAllowed(t *testing.T) {
 	listener := startTCPListener(t)
 	size := 1
-	pool := NewConnectionPool(listener.Addr().String(), size, true, 1*time.Second)
+	pool := newConnectionPool(listener.Addr().String(), size, true, 1*time.Second)
 	conn, err := pool.Borrow()
 	if err != nil {
 		t.Error(err)
