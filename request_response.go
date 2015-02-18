@@ -58,7 +58,7 @@ type Response interface {
 }
 
 type DecodingError struct {
-	err error
+	err    error
 	reason string
 }
 

@@ -96,10 +96,10 @@ type Message struct {
 
 var (
 	reason_InvalidMessageAndOffsetOffset = "Invalid offset in MessageAndOffset"
-	reason_InvalidMessageLength = "Invalid Message length"
-	reason_InvalidMessageCRC = "Invalid Message CRC"
-	reason_InvalidMessageMagicByte = "Invalid Message magic byte"
-	reason_InvalidMessageAttributes = "Invalid Message attributes"
-	reason_InvalidMessageKey = "Invalid Message key"
-	reason_InvalidMessageValue = "Invalid Message value"
+	reason_InvalidMessageLength          = "Invalid Message length"
+	reason_InvalidMessageCRC             = "Invalid Message CRC"
+	reason_InvalidMessageMagicByte       = "Invalid Message magic byte"
+	reason_InvalidMessageAttributes      = "Invalid Message attributes"
+	reason_InvalidMessageKey             = "Invalid Message key"
+	reason_InvalidMessageValue           = "Invalid Message value"
 )

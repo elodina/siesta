@@ -133,11 +133,11 @@ func (this *PartitionOffsets) Read(decoder Decoder) *DecodingError {
 }
 
 var (
-	reason_InvalidOffsetsLength = "Invalid length for Offsets field"
-	reason_InvalidOffsetTopic = "Invalid topic in offset map"
-	reason_InvalidPartitionOffsetsLength = "Invalid length for partition offsets field"
-	reason_InvalidPartitionOffsetsPartition = "Invalid partition in partition offset"
-	reason_InvalidPartitionOffsetsErrorCode = "Invalid error code in partition offset"
+	reason_InvalidOffsetsLength                 = "Invalid length for Offsets field"
+	reason_InvalidOffsetTopic                   = "Invalid topic in offset map"
+	reason_InvalidPartitionOffsetsLength        = "Invalid length for partition offsets field"
+	reason_InvalidPartitionOffsetsPartition     = "Invalid partition in partition offset"
+	reason_InvalidPartitionOffsetsErrorCode     = "Invalid error code in partition offset"
 	reason_InvalidPartitionOffsetsOffsetsLength = "Invalid length for offsets field in partition offset"
-	reason_InvalidPartitionOffset = "Invalid offset in partition offset"
+	reason_InvalidPartitionOffset               = "Invalid offset in partition offset"
 )

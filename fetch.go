@@ -158,11 +158,11 @@ func (this *FetchResponseData) Read(decoder Decoder) *DecodingError {
 }
 
 var (
-	reason_InvalidBlocksLength = "Invalid length for Blocks field"
-	reason_InvalidBlockTopic = "Invalid topic in block"
-	reason_InvalidFetchResponseDataLength = "Invalid length for FetchResponseData field"
-	reason_InvalidFetchResponseDataPartition = "Invalid partition in FetchResponseData"
-	reason_InvalidFetchResponseDataErrorCode = "Invalid error code in FetchResponseData"
+	reason_InvalidBlocksLength                         = "Invalid length for Blocks field"
+	reason_InvalidBlockTopic                           = "Invalid topic in block"
+	reason_InvalidFetchResponseDataLength              = "Invalid length for FetchResponseData field"
+	reason_InvalidFetchResponseDataPartition           = "Invalid partition in FetchResponseData"
+	reason_InvalidFetchResponseDataErrorCode           = "Invalid error code in FetchResponseData"
 	reason_InvalidFetchResponseDataHighwaterMarkOffset = "Invalid highwater mark offset in FetchResponseData"
-	reason_InvalidMessageSetLength = "Invalid MessageSet length"
+	reason_InvalidMessageSetLength                     = "Invalid MessageSet length"
 )
