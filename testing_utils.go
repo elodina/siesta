@@ -79,6 +79,12 @@ func decode(t *testing.T, response Response, bytes []byte) {
 	checkErr(t, err)
 }
 
+func decodeErr(t *testing.T, response Response, bytes []byte, expected error) {
+	decoder := NewBinaryDecoder(bytes)
+	err := response.Read(decoder)
+	assert(t, err, expected)
+}
+
 func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) net.Listener {
 	netName := "tcp"
 	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)

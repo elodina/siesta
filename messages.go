@@ -17,7 +17,7 @@ package siesta
 
 type MessageAndOffset struct {
 	Offset  int64
-	Message *Message
+	Message *MessageData
 }
 
 func (this *MessageAndOffset) Read(decoder Decoder) error {
@@ -32,7 +32,7 @@ func (this *MessageAndOffset) Read(decoder Decoder) error {
 		return err
 	}
 
-	message := new(Message)
+	message := new(MessageData)
 	err = message.Read(decoder)
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func (this *MessageAndOffset) Read(decoder Decoder) error {
 	return nil
 }
 
-type Message struct {
+type MessageData struct {
 	Crc        int32
 	MagicByte  int8
 	Attributes int8
@@ -50,7 +50,7 @@ type Message struct {
 	Value      []byte
 }
 
-func (this *Message) Read(decoder Decoder) error {
+func (this *MessageData) Read(decoder Decoder) error {
 	crc, err := decoder.GetInt32()
 	if err != nil {
 		return err
@@ -84,4 +84,12 @@ func (this *Message) Read(decoder Decoder) error {
 	//TODO decompression logic should be here, but we'll get back to this later
 
 	return nil
+}
+
+type Message struct {
+	Topic string
+	Partition int32
+	Offset int64
+	Key []byte
+	Value []byte
 }

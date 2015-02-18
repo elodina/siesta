@@ -39,6 +39,11 @@ func TestInt8EncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	bytes := []byte{}
+	decoder = NewBinaryDecoder(bytes)
+	_, err := decoder.GetInt8()
+	assert(t, err, EOF)
 }
 
 func TestInt16EncodingDecoding(t *testing.T) {
@@ -58,6 +63,11 @@ func TestInt16EncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	bytes := []byte{0x00}
+	decoder = NewBinaryDecoder(bytes)
+	_, err := decoder.GetInt16()
+	assert(t, err, EOF)
 }
 
 func TestInt32EncodingDecoding(t *testing.T) {
@@ -77,6 +87,11 @@ func TestInt32EncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	bytes := []byte{0x00, 0x00, 0x00}
+	decoder = NewBinaryDecoder(bytes)
+	_, err := decoder.GetInt32()
+	assert(t, err, EOF)
 }
 
 func TestInt64EncodingDecoding(t *testing.T) {
@@ -96,6 +111,11 @@ func TestInt64EncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	bytes := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	decoder = NewBinaryDecoder(bytes)
+	_, err := decoder.GetInt64()
+	assert(t, err, EOF)
 }
 
 func TestStringEncodingDecoding(t *testing.T) {
@@ -115,6 +135,16 @@ func TestStringEncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	bytesNegativeLength := []byte{0xFF, 0xFE}
+	decoder = NewBinaryDecoder(bytesNegativeLength)
+	_, err := decoder.GetString()
+	assert(t, err, InvalidStringLength)
+
+	bytesInsufficientData := []byte{0x00, 0x03, 0x6C}
+	decoder = NewBinaryDecoder(bytesInsufficientData)
+	_, err = decoder.GetString()
+	assert(t, err, EOF)
 }
 
 func TestBytesEncodingDecoding(t *testing.T) {
@@ -134,6 +164,27 @@ func TestBytesEncodingDecoding(t *testing.T) {
 		checkErr(t, err)
 		assert(t, value, randValues[i])
 	}
+
+	nilBytes := []byte{0xFF, 0xFF, 0xFF, 0xFF}
+	decoder = NewBinaryDecoder(nilBytes)
+	bytes, err := decoder.GetBytes()
+	checkErr(t, err)
+	assert(t, bytes, ([]byte)(nil))
+
+	bytesNegativeLength := []byte{0xFF, 0xFF, 0xFF, 0xFE}
+	decoder = NewBinaryDecoder(bytesNegativeLength)
+	_, err = decoder.GetBytes()
+	assert(t, err, InvalidBytesLength)
+
+	bytesInsufficientData := []byte{0x00, 0x00, 0x00, 0x03, 0x6C}
+	decoder = NewBinaryDecoder(bytesInsufficientData)
+	_, err = decoder.GetBytes()
+	assert(t, err, EOF)
+}
+
+func TestEncoderSize(t *testing.T) {
+	encoder := NewBinaryEncoder(make([]byte, 8))
+	assert(t, encoder.Size(), int32(8))
 }
 
 func TestSizingEncoder(t *testing.T) {
