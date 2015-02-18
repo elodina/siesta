@@ -55,22 +55,22 @@ type OffsetResponse struct {
 	Offsets map[string][]*PartitionOffsets
 }
 
-func (this *OffsetResponse) Read(decoder Decoder) error {
+func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidOffsetsLength)
 	}
 
 	this.Offsets = make(map[string][]*PartitionOffsets)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidOffsetTopic)
 		}
 
 		partitionOffsetsLength, err := decoder.GetInt32()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidPartitionOffsetsLength)
 		}
 
 		for j := int32(0); j < partitionOffsetsLength; j++ {
@@ -103,31 +103,41 @@ type PartitionOffsets struct {
 	Offsets   []int64
 }
 
-func (this *PartitionOffsets) Read(decoder Decoder) error {
+func (this *PartitionOffsets) Read(decoder Decoder) *DecodingError {
 	partition, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionOffsetsPartition)
 	}
 	this.Partition = partition
 
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionOffsetsErrorCode)
 	}
 	this.Error = BrokerErrors[errCode]
 
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionOffsetsOffsetsLength)
 	}
 	this.Offsets = make([]int64, offsetsLength)
 	for i := int32(0); i < offsetsLength; i++ {
 		offset, err := decoder.GetInt64()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidPartitionOffset)
 		}
 		this.Offsets[i] = offset
 	}
 
 	return nil
 }
+
+var (
+	reason_InvalidOffsetsLength = "Invalid length for Offsets field"
+	reason_InvalidOffsetTopic = "Invalid topic in offset map"
+	reason_InvalidPartitionOffsetsLength = "Invalid length for partition offsets field"
+	reason_InvalidPartitionOffsetsPartition = "Invalid partition in partition offset"
+	reason_InvalidPartitionOffsetsErrorCode = "Invalid error code in partition offset"
+	reason_InvalidPartitionOffsetsOffsetsLength = "Invalid length for offsets field in partition offset"
+	reason_InvalidPartitionOffset = "Invalid offset in partition offset"
+)

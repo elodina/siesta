@@ -59,35 +59,35 @@ type FetchResponse struct {
 	Blocks map[string]map[int32]*FetchResponseData
 }
 
-func (this *FetchResponse) Read(decoder Decoder) error {
+func (this *FetchResponse) Read(decoder Decoder) *DecodingError {
 	this.Blocks = make(map[string]map[int32]*FetchResponseData)
 
 	blocksLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidBlocksLength)
 	}
 
 	for i := int32(0); i < blocksLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidBlockTopic)
 		}
 		this.Blocks[topic] = make(map[int32]*FetchResponseData)
 
 		fetchResponseDataLength, err := decoder.GetInt32()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidFetchResponseDataLength)
 		}
 		for j := int32(0); j < fetchResponseDataLength; j++ {
 			partition, err := decoder.GetInt32()
 			if err != nil {
-				return err
+				return NewDecodingError(err, reason_InvalidFetchResponseDataPartition)
 			}
 
 			fetchResponseData := new(FetchResponseData)
-			err = fetchResponseData.Read(decoder)
-			if err != nil {
-				return err
+			decodingErr := fetchResponseData.Read(decoder)
+			if decodingErr != nil {
+				return decodingErr
 			}
 
 			this.Blocks[topic][partition] = fetchResponseData
@@ -128,27 +128,27 @@ type FetchResponseData struct {
 	Messages            []*MessageAndOffset
 }
 
-func (this *FetchResponseData) Read(decoder Decoder) error {
+func (this *FetchResponseData) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidFetchResponseDataErrorCode)
 	}
 	this.Error = BrokerErrors[errCode]
 
 	highwaterMarkOffset, err := decoder.GetInt64()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidFetchResponseDataHighwaterMarkOffset)
 	}
 	this.HighwaterMarkOffset = highwaterMarkOffset
 
 	if _, err = decoder.GetInt32(); err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageSetLength)
 	}
 
 	for decoder.Remaining() > 0 {
 		messageAndOffset := new(MessageAndOffset)
 		err := messageAndOffset.Read(decoder)
-		if err != nil && err != EOF {
+		if err != nil && err.Error() != EOF {
 			return err
 		}
 		this.Messages = append(this.Messages, messageAndOffset)
@@ -156,3 +156,13 @@ func (this *FetchResponseData) Read(decoder Decoder) error {
 
 	return nil
 }
+
+var (
+	reason_InvalidBlocksLength = "Invalid length for Blocks field"
+	reason_InvalidBlockTopic = "Invalid topic in block"
+	reason_InvalidFetchResponseDataLength = "Invalid length for FetchResponseData field"
+	reason_InvalidFetchResponseDataPartition = "Invalid partition in FetchResponseData"
+	reason_InvalidFetchResponseDataErrorCode = "Invalid error code in FetchResponseData"
+	reason_InvalidFetchResponseDataHighwaterMarkOffset = "Invalid highwater mark offset in FetchResponseData"
+	reason_InvalidMessageSetLength = "Invalid MessageSet length"
+)

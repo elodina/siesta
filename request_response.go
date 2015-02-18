@@ -54,5 +54,22 @@ type Request interface {
 }
 
 type Response interface {
-	Read(Decoder) error
+	Read(Decoder) *DecodingError
+}
+
+type DecodingError struct {
+	err error
+	reason string
+}
+
+func NewDecodingError(err error, reason string) *DecodingError {
+	return &DecodingError{err, reason}
+}
+
+func (this *DecodingError) Error() error {
+	return this.err
+}
+
+func (this *DecodingError) Reason() string {
+	return this.reason
 }

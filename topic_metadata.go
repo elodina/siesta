@@ -45,10 +45,10 @@ type TopicMetadataResponse struct {
 	TopicMetadata []*TopicMetadata
 }
 
-func (this *TopicMetadataResponse) Read(decoder Decoder) error {
+func (this *TopicMetadataResponse) Read(decoder Decoder) *DecodingError {
 	brokersLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidBrokersLength)
 	}
 
 	this.Brokers = make([]*Broker, brokersLength)
@@ -63,7 +63,7 @@ func (this *TopicMetadataResponse) Read(decoder Decoder) error {
 
 	metadataLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMetadataLength)
 	}
 
 	this.TopicMetadata = make([]*TopicMetadata, metadataLength)
@@ -85,22 +85,22 @@ type Broker struct {
 	Port   int32
 }
 
-func (this *Broker) Read(decoder Decoder) error {
+func (this *Broker) Read(decoder Decoder) *DecodingError {
 	nodeId, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidBrokerNodeId)
 	}
 	this.NodeId = nodeId
 
 	host, err := decoder.GetString()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidBrokerHost)
 	}
 	this.Host = host
 
 	port, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidBrokerPort)
 	}
 	this.Port = port
 
@@ -113,22 +113,22 @@ type TopicMetadata struct {
 	PartitionMetadata []*PartitionMetadata
 }
 
-func (this *TopicMetadata) Read(decoder Decoder) error {
+func (this *TopicMetadata) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidTopicMetadataErrorCode)
 	}
 	this.Error = BrokerErrors[errCode]
 
 	topicName, err := decoder.GetString()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidTopicMetadataTopicName)
 	}
 	this.TopicName = topicName
 
 	metadataLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataLength)
 	}
 
 	this.PartitionMetadata = make([]*PartitionMetadata, metadataLength)
@@ -152,52 +152,70 @@ type PartitionMetadata struct {
 	Isr         []int32
 }
 
-func (this *PartitionMetadata) Read(decoder Decoder) error {
+func (this *PartitionMetadata) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataErrorCode)
 	}
 	this.Error = BrokerErrors[errCode]
 
 	partition, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataPartition)
 	}
 	this.PartitionId = partition
 
 	leader, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataLeader)
 	}
 	this.Leader = leader
 
 	replicasLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataReplicasLength)
 	}
 
 	this.Replicas = make([]int32, replicasLength)
 	for i := int32(0); i < replicasLength; i++ {
 		replica, err := decoder.GetInt32()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidPartitionMetadataReplica)
 		}
 		this.Replicas[i] = replica
 	}
 
 	isrLength, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidPartitionMetadataIsrLength)
 	}
 
 	this.Isr = make([]int32, isrLength)
 	for i := int32(0); i < isrLength; i++ {
 		isr, err := decoder.GetInt32()
 		if err != nil {
-			return err
+			return NewDecodingError(err, reason_InvalidPartitionMetadataIsr)
 		}
 		this.Isr[i] = isr
 	}
 
 	return nil
 }
+
+var (
+	reason_InvalidBrokersLength = "Invalid length for Brokers field"
+	reason_InvalidMetadataLength = "Invalid length for TopicMetadata field"
+	reason_InvalidBrokerNodeId = "Invalid broker node id"
+	reason_InvalidBrokerHost = "Invalid broker host"
+	reason_InvalidBrokerPort = "Invalid broker port"
+	reason_InvalidTopicMetadataErrorCode = "Invalid topic metadata error code"
+	reason_InvalidTopicMetadataTopicName = "Invalid topic metadata topic name"
+	reason_InvalidPartitionMetadataLength = "Invalid length for Partition Metadata field"
+	reason_InvalidPartitionMetadataErrorCode = "Invalid partition metadata error code"
+	reason_InvalidPartitionMetadataPartition = "Invalid partition in partition metadata"
+	reason_InvalidPartitionMetadataLeader = "Invalid leader in partition metadata"
+	reason_InvalidPartitionMetadataReplicasLength = "Invalid length for Replicas field"
+	reason_InvalidPartitionMetadataReplica = "Invalid replica in partition metadata"
+	reason_InvalidPartitionMetadataIsrLength = "Invalid length for Isr field"
+	reason_InvalidPartitionMetadataIsr = "Invalid isr in partition metadata"
+)

@@ -76,10 +76,10 @@ func testRequest(t *testing.T, request Request, expected []byte) {
 func decode(t *testing.T, response Response, bytes []byte) {
 	decoder := NewBinaryDecoder(bytes)
 	err := response.Read(decoder)
-	checkErr(t, err)
+	assert(t, err, (*DecodingError)(nil))
 }
 
-func decodeErr(t *testing.T, response Response, bytes []byte, expected error) {
+func decodeErr(t *testing.T, response Response, bytes []byte, expected *DecodingError) {
 	decoder := NewBinaryDecoder(bytes)
 	err := response.Read(decoder)
 	assert(t, err, expected)

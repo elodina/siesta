@@ -20,22 +20,22 @@ type MessageAndOffset struct {
 	Message *MessageData
 }
 
-func (this *MessageAndOffset) Read(decoder Decoder) error {
+func (this *MessageAndOffset) Read(decoder Decoder) *DecodingError {
 	offset, err := decoder.GetInt64()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageAndOffsetOffset)
 	}
 	this.Offset = offset
 
 	_, err = decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageLength)
 	}
 
 	message := new(MessageData)
-	err = message.Read(decoder)
-	if err != nil {
-		return err
+	decodingErr := message.Read(decoder)
+	if decodingErr != nil {
+		return decodingErr
 	}
 	this.Message = message
 
@@ -50,34 +50,34 @@ type MessageData struct {
 	Value      []byte
 }
 
-func (this *MessageData) Read(decoder Decoder) error {
+func (this *MessageData) Read(decoder Decoder) *DecodingError {
 	crc, err := decoder.GetInt32()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageCRC)
 	}
 	this.Crc = crc
 
 	magic, err := decoder.GetInt8()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageMagicByte)
 	}
 	this.MagicByte = magic
 
 	attributes, err := decoder.GetInt8()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageAttributes)
 	}
 	this.Attributes = attributes
 
 	key, err := decoder.GetBytes()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageKey)
 	}
 	this.Key = key
 
 	value, err := decoder.GetBytes()
 	if err != nil {
-		return err
+		return NewDecodingError(err, reason_InvalidMessageValue)
 	}
 	this.Value = value
 
@@ -93,3 +93,13 @@ type Message struct {
 	Key []byte
 	Value []byte
 }
+
+var (
+	reason_InvalidMessageAndOffsetOffset = "Invalid offset in MessageAndOffset"
+	reason_InvalidMessageLength = "Invalid Message length"
+	reason_InvalidMessageCRC = "Invalid Message CRC"
+	reason_InvalidMessageMagicByte = "Invalid Message magic byte"
+	reason_InvalidMessageAttributes = "Invalid Message attributes"
+	reason_InvalidMessageKey = "Invalid Message key"
+	reason_InvalidMessageValue = "Invalid Message value"
+)
