@@ -23,13 +23,12 @@ import (
 )
 
 type Connector interface {
-	//TODO: implement Consume API call
-	//Consume(topic string, partition int32, offset int64) (*, error)
+	Consume(topic string, partition int32, offset int64) ([]*Message, error)
 	GetAvailableOffsets(topic string, partition int32) (*OffsetResponse, error)
 	GetTopicMetadata(topic string) (*TopicMetadataResponse, error)
+	Produce(message Message) error
 
-	//TODO: implement Produce, GetGroupMetadata, GetGroupAvailableOffsets, CommitGroupOffset API calls
-	//Produce()
+	//TODO: implement GetGroupMetadata, GetGroupAvailableOffsets, CommitGroupOffset API calls
 	//GetGroupMetadata(group string)
 	//GetGroupAvailableOffsets(group string)
 	//CommitGroupOffset(topic string, partition int32, offset int64) error
@@ -44,6 +43,7 @@ type ConnectorConfig struct {
 	KeepAliveTimeout        time.Duration
 	MaxConnections          int
 	MaxConnectionsPerBroker int
+	FetchSize               int32
 }
 
 type DefaultConnector struct {
@@ -54,6 +54,7 @@ type DefaultConnector struct {
 	keepAlive               bool
 	keepAliveTimeout        time.Duration
 	maxConnectionsPerBroker int
+	fetchSize               int32
 }
 
 func NewDefaultConnector(config ConnectorConfig) Connector {
@@ -73,12 +74,20 @@ func NewDefaultConnector(config ConnectorConfig) Connector {
 	}
 }
 
+func (this *DefaultConnector) Consume(topic string, partition int32, offset int64) ([]*Message, error) {
+	panic("Not implemented yet")
+}
+
 func (this *DefaultConnector) GetAvailableOffsets(topic string, partition int32) (*OffsetResponse, error) {
-	return nil, nil
+	panic("Not implemented yet")
 }
 
 func (this *DefaultConnector) GetTopicMetadata(topic string) (*TopicMetadataResponse, error) {
-	return nil, nil
+	panic("Not implemented yet")
+}
+
+func (this *DefaultConnector) Produce(message Message) error {
+	panic("Not implemented yet")
 }
 
 type brokerLink struct {
