@@ -17,7 +17,7 @@ package siesta
 
 type OffsetCommitRequest struct {
 	ConsumerGroup string
-	Offsets map[string]map[int32]*OffsetAndMetadata
+	Offsets       map[string]map[int32]*OffsetAndMetadata
 }
 
 func NewOffsetCommitRequest(group string) *OffsetCommitRequest {
@@ -106,15 +106,15 @@ func (this *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
 }
 
 type OffsetAndMetadata struct {
-	Offset int64
+	Offset    int64
 	TimeStamp int64
-	Metadata string
+	Metadata  string
 }
 
 var (
-	reason_InvalidOffsetsMapLength = "Invalid length for Offsets field"
-	reason_InvalidOffsetsTopic = "Invalid topic in OffsetCommitResponse"
+	reason_InvalidOffsetsMapLength        = "Invalid length for Offsets field"
+	reason_InvalidOffsetsTopic            = "Invalid topic in OffsetCommitResponse"
 	reason_InvalidOffsetsPartitionsLength = "Invalid length for partitions in OffsetCommitResponse"
-	reason_InvalidOffsetsPartition = "Invalid partition in OffsetCommitResponse"
-	reason_InvalidOffsetsErrorCode = "Invalid error code in OffsetCommitResponse"
+	reason_InvalidOffsetsPartition        = "Invalid partition in OffsetCommitResponse"
+	reason_InvalidOffsetsErrorCode        = "Invalid error code in OffsetCommitResponse"
 )
