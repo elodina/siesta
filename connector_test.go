@@ -24,6 +24,7 @@ import (
 )
 
 func TestDefaultConnectorConsume(t *testing.T) {
+	t.Skip()
 	config := &ConnectorConfig{
 		BrokerList:              []string{"localhost:9092"},
 		ReadTimeout:             5 * time.Second,
@@ -42,7 +43,6 @@ func TestDefaultConnectorConsume(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("Len: ", len(messages))
 	for _, message := range messages {
 		fmt.Printf("offset: %d, value: %s\n", message.Offset, string(message.Value))
 	}

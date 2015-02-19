@@ -165,9 +165,6 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 
 	for i := 0; i < len(this.links); i++ {
 		response := <-metadataResponses
-		fmt.Printf("err %v\n", response.err)
-		fmt.Printf("Brokers %v\n", response.metadata.Brokers)
-		fmt.Printf("Meta %v\n", response.metadata.TopicMetadata)
 		if response.err != nil {
 			continue
 		}
@@ -192,7 +189,6 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 }
 
 func (this *DefaultConnector) requestBrokerMetadata(brokerLink *brokerLink, topics []string, metadataResponses chan *topicMetadataAndError) {
-	fmt.Println(brokerLink)
 	request := NewTopicMetadataRequest(topics)
 	bytes, err := this.syncSendAndReceive(brokerLink, request)
 	if err != nil {
@@ -200,11 +196,9 @@ func (this *DefaultConnector) requestBrokerMetadata(brokerLink *brokerLink, topi
 	}
 
 	decoder := NewBinaryDecoder(bytes)
-	fmt.Printf("Bytes: % x\n", bytes)
 	response := new(TopicMetadataResponse)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
-		fmt.Println("Reason: ", decodingErr.Reason())
 		metadataResponses <- &topicMetadataAndError{nil, decodingErr.Error()}
 	}
 	metadataResponses <- &topicMetadataAndError{response, nil}
@@ -309,8 +303,6 @@ func newBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duratio
 }
 
 func (this *brokerLink) getConnection() (int32, *net.TCPConn, error) {
-	fmt.Println("CORRELATION IDS", this)
-	time.Sleep(1 * time.Second)
 	correlationId := <-this.correlationIds
 	conn, err := this.connectionPool.Borrow()
 	return correlationId, conn, err
