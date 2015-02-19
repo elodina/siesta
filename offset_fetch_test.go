@@ -59,6 +59,6 @@ func TestOffsetFetchResponse(t *testing.T) {
 	decodeErr(t, new(OffsetFetchResponse), invalidPartitionsLengthFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponsePartitionsLength))
 	decodeErr(t, new(OffsetFetchResponse), invalidPartitionFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponsePartition))
 	decodeErr(t, new(OffsetFetchResponse), invalidOffsetFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseOffset))
-	decodeErr(t, new(OffsetFetchResponse), invalidMetadataFetchResponseBytes, NewDecodingError(InvalidStringLength, reason_InvalidOffsetFetchResponseMetadata))
+	decodeErr(t, new(OffsetFetchResponse), invalidMetadataFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseMetadata))
 	decodeErr(t, new(OffsetFetchResponse), invalidErrorCodeFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseErrorCode))
 }

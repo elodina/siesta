@@ -84,7 +84,7 @@ func (this *BinaryDecoder) GetBytes() ([]byte, error) {
 	l, err := this.GetInt32()
 
 	if err != nil || l < -1 {
-		return nil, InvalidBytesLength
+		return nil, EOF
 	}
 
 	length := int(l)
@@ -107,7 +107,7 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	l, err := this.GetInt16()
 
 	if err != nil || l < -1 {
-		return "", InvalidStringLength
+		return "", EOF
 	}
 
 	length := int(l)

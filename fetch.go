@@ -148,8 +148,11 @@ func (this *FetchResponseData) Read(decoder Decoder) *DecodingError {
 	for decoder.Remaining() > 0 {
 		messageAndOffset := new(MessageAndOffset)
 		err := messageAndOffset.Read(decoder)
-		if err != nil && err.Error() != EOF {
-			return err
+		if err != nil {
+			if err.Error() != EOF {
+				return err
+			}
+			continue
 		}
 		this.Messages = append(this.Messages, messageAndOffset)
 	}

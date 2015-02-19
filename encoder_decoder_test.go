@@ -139,7 +139,7 @@ func TestStringEncodingDecoding(t *testing.T) {
 	bytesNegativeLength := []byte{0xFF, 0xFE}
 	decoder = NewBinaryDecoder(bytesNegativeLength)
 	_, err := decoder.GetString()
-	assert(t, err, InvalidStringLength)
+	assert(t, err, EOF)
 
 	bytesInsufficientData := []byte{0x00, 0x03, 0x6C}
 	decoder = NewBinaryDecoder(bytesInsufficientData)
@@ -174,7 +174,7 @@ func TestBytesEncodingDecoding(t *testing.T) {
 	bytesNegativeLength := []byte{0xFF, 0xFF, 0xFF, 0xFE}
 	decoder = NewBinaryDecoder(bytesNegativeLength)
 	_, err = decoder.GetBytes()
-	assert(t, err, InvalidBytesLength)
+	assert(t, err, EOF)
 
 	bytesInsufficientData := []byte{0x00, 0x00, 0x00, 0x03, 0x6C}
 	decoder = NewBinaryDecoder(bytesInsufficientData)

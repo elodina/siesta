@@ -252,11 +252,13 @@ func (this *DefaultConnector) send(correlationId int32, conn *net.TCPConn, reque
 	encoder := NewBinaryEncoder(bytes)
 	writer.Write(encoder)
 
+	conn.SetWriteDeadline(time.Now().Add(this.writeTimeout))
 	_, err := conn.Write(bytes)
 	return err
 }
 
 func (this *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
+	conn.SetReadDeadline(time.Now().Add(this.writeTimeout))
 	header := make([]byte, 8)
 	_, err := io.ReadFull(conn, header)
 	if err != nil {
