@@ -15,6 +15,8 @@ limitations under the License. */
 
 package siesta
 
+import "fmt"
+
 type TopicMetadataRequest struct {
 	Topics []string
 }
@@ -83,6 +85,10 @@ type Broker struct {
 	NodeId int32
 	Host   string
 	Port   int32
+}
+
+func (this *Broker) String() string {
+	return fmt.Sprintf("%s:%d", this.Host, this.Port)
 }
 
 func (this *Broker) Read(decoder Decoder) *DecodingError {

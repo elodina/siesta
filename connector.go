@@ -29,7 +29,7 @@ import (
 
 type Connector interface {
 	Consume(topic string, partition int32, offset int64) ([]*Message, error)
-	GetAvailableOffsets(topic string, partition int32) (*OffsetResponse, error)
+	GetAvailableOffsets(group string, topic string, partition int32) (*OffsetResponse, error)
 	GetTopicMetadata(topics []string) (*TopicMetadataResponse, error)
 	Produce(message Message) error
 	Close() <-chan bool
@@ -117,7 +117,7 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	return response.GetMessages(), nil
 }
 
-func (this *DefaultConnector) GetAvailableOffsets(topic string, partition int32) (*OffsetResponse, error) {
+func (this *DefaultConnector) GetAvailableOffsets(group string, topic string, partition int32) (*OffsetResponse, error) {
 	panic("Not implemented yet")
 }
 
@@ -127,21 +127,24 @@ func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataR
 		this.refreshMetadata(topics)
 	}
 
-	request := NewTopicMetadataRequest(topics)
-	//TODO should probably take a random broker, not the first one to balance load
-	bytes, err := this.syncSendAndReceive(this.links[0], request)
-	if err != nil {
-		return nil, err
+	metadataResponses := make(chan *topicMetadataAndError, len(this.links))
+	for _, link := range this.links {
+		Debugf(this, "Requesting topic metadata for %s", link.broker)
+		go this.requestBrokerMetadata(link, topics, metadataResponses)
 	}
 
-	decoder := NewBinaryDecoder(bytes)
-	response := new(TopicMetadataResponse)
-	decodingErr := response.Read(decoder)
-	if decodingErr != nil {
-		return nil, decodingErr.Error()
+	var response *topicMetadataAndError
+	for i := 0; i < len(this.links); i++ {
+		response = <-metadataResponses
+		if response.err == nil {
+			break
+		}
+
+		Warnf(this, "Could not fetch metadata for topics %s from broker %s:%d", topics, response.link.broker.Host, response.link.broker.Port)
 	}
 
-	return response, nil
+
+	return response.metadata, response.err
 }
 
 func (this *DefaultConnector) Produce(message Message) error {
@@ -188,7 +191,9 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 
 	for i := 0; i < len(this.links); i++ {
 		response := <-metadataResponses
+		Tracef(this, "Got metadata response from %s", response.link.broker)
 		if response.err != nil {
+			Warnf(this, "Metadata response from %s contained an error: %s", response.link.broker, response.err)
 			continue
 		}
 
@@ -202,6 +207,7 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 				if leader, exists := brokers[partitionMetadata.Leader]; exists {
 					this.putLeader(metadata.TopicName, partitionMetadata.PartitionId, leader)
 				} else {
+					Warnf(this, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.TopicName, partitionMetadata.PartitionId)
 					//TODO: warn about incomplete broker list
 				}
 			}
@@ -215,16 +221,18 @@ func (this *DefaultConnector) requestBrokerMetadata(brokerLink *brokerLink, topi
 	request := NewTopicMetadataRequest(topics)
 	bytes, err := this.syncSendAndReceive(brokerLink, request)
 	if err != nil {
-		metadataResponses <- &topicMetadataAndError{nil, err}
+		metadataResponses <- &topicMetadataAndError{nil, brokerLink, err}
+		return
 	}
 
 	decoder := NewBinaryDecoder(bytes)
 	response := new(TopicMetadataResponse)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
-		metadataResponses <- &topicMetadataAndError{nil, decodingErr.Error()}
+		metadataResponses <- &topicMetadataAndError{nil, brokerLink, decodingErr.Error()}
+		return
 	}
-	metadataResponses <- &topicMetadataAndError{response, nil}
+	metadataResponses <- &topicMetadataAndError{response, brokerLink, nil}
 }
 
 func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
@@ -237,6 +245,7 @@ func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLi
 }
 
 func (this *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
+	Tracef(this, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
 	if _, exists := this.leaders[topic]; !exists {
 		this.leaders[topic] = make(map[int32]*brokerLink)
 	}
@@ -347,5 +356,6 @@ func correlationIdGenerator(out chan int32, stop chan bool) {
 
 type topicMetadataAndError struct {
 	metadata *TopicMetadataResponse
+	link	 *brokerLink
 	err      error
 }
