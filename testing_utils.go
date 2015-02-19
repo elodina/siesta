@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+	"time"
 )
 
 const TCPListenerAddress = "localhost:0"
@@ -118,4 +119,20 @@ func startTCPListener(t *testing.T) net.Listener {
 	}
 
 	return listener
+}
+
+func testConnector() *DefaultConnector {
+	config := &ConnectorConfig{
+		BrokerList:              []string{"localhost:9092"},
+		ReadTimeout:             5 * time.Second,
+		WriteTimeout:            5 * time.Second,
+		ConnectTimeout:          5 * time.Second,
+		KeepAlive:               true,
+		KeepAliveTimeout:        1 * time.Minute,
+		MaxConnections:          5,
+		MaxConnectionsPerBroker: 5,
+		FetchSize:               1024000,
+		ClientId:                "siesta",
+	}
+	return NewDefaultConnector(config)
 }

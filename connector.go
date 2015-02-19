@@ -30,7 +30,7 @@ import (
 type Connector interface {
 	Consume(topic string, partition int32, offset int64) ([]*Message, error)
 	GetAvailableOffsets(topic string, partition int32) (*OffsetResponse, error)
-	GetTopicMetadata(topic string) (*TopicMetadataResponse, error)
+	GetTopicMetadata(topics []string) (*TopicMetadataResponse, error)
 	Produce(message Message) error
 	Close() <-chan bool
 
@@ -68,7 +68,7 @@ type DefaultConnector struct {
 	lock                    sync.Mutex
 }
 
-func NewDefaultConnector(config *ConnectorConfig) Connector {
+func NewDefaultConnector(config *ConnectorConfig) *DefaultConnector {
 	leaders := make(map[string]map[int32]*brokerLink)
 	brokers := make([]*brokerLink, 0)
 	connector := &DefaultConnector{
@@ -86,6 +86,10 @@ func NewDefaultConnector(config *ConnectorConfig) Connector {
 	}
 
 	return connector
+}
+
+func (this *DefaultConnector) String() string {
+	return "Default Connector"
 }
 
 func (this *DefaultConnector) Consume(topic string, partition int32, offset int64) ([]*Message, error) {
@@ -117,8 +121,27 @@ func (this *DefaultConnector) GetAvailableOffsets(topic string, partition int32)
 	panic("Not implemented yet")
 }
 
-func (this *DefaultConnector) GetTopicMetadata(topic string) (*TopicMetadataResponse, error) {
-	panic("Not implemented yet")
+func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
+	for len(this.links) == 0 {
+		Info(this, "No connected brokers yet, refreshing metadata")
+		this.refreshMetadata(topics)
+	}
+
+	request := NewTopicMetadataRequest(topics)
+	//TODO should probably take a random broker, not the first one to balance load
+	bytes, err := this.syncSendAndReceive(this.links[0], request)
+	if err != nil {
+		return nil, err
+	}
+
+	decoder := NewBinaryDecoder(bytes)
+	response := new(TopicMetadataResponse)
+	decodingErr := response.Read(decoder)
+	if decodingErr != nil {
+		return nil, decodingErr.Error()
+	}
+
+	return response, nil
 }
 
 func (this *DefaultConnector) Produce(message Message) error {
@@ -152,9 +175,9 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 			}
 
 			this.links = append(this.links, newBrokerLink(&Broker{Host: hostPort[0], Port: int32(port)},
-					this.keepAlive,
-					this.keepAliveTimeout,
-					this.maxConnectionsPerBroker))
+				this.keepAlive,
+				this.keepAliveTimeout,
+				this.maxConnectionsPerBroker))
 		}
 	}
 

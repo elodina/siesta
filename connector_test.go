@@ -20,24 +20,12 @@ package siesta
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
 func TestDefaultConnectorConsume(t *testing.T) {
 	t.Skip()
-	config := &ConnectorConfig{
-		BrokerList:              []string{"localhost:9092"},
-		ReadTimeout:             5 * time.Second,
-		WriteTimeout:            5 * time.Second,
-		ConnectTimeout:          5 * time.Second,
-		KeepAlive:               true,
-		KeepAliveTimeout:        1 * time.Minute,
-		MaxConnections:          5,
-		MaxConnectionsPerBroker: 5,
-		FetchSize:               1024000,
-		ClientId:                "siesta",
-	}
-	connector := NewDefaultConnector(config)
+
+	connector := testConnector()
 	messages, err := connector.Consume("siesta-1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -46,5 +34,15 @@ func TestDefaultConnectorConsume(t *testing.T) {
 	for _, message := range messages {
 		fmt.Printf("offset: %d, value: %s\n", message.Offset, string(message.Value))
 	}
+	<-connector.Close()
+}
+
+func TestDefaultConnectorTopicMetadata(t *testing.T) {
+	t.Skip()
+
+	connector := testConnector()
+	_, err := connector.GetTopicMetadata([]string{"test-2"})
+	assertFatal(t, err, nil)
+
 	<-connector.Close()
 }
