@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"errors"
 )
 
 type Connector interface {
@@ -66,6 +67,9 @@ type DefaultConnector struct {
 	fetchSize               int32
 	clientId                string
 	lock                    sync.Mutex
+
+	//offset coordination part
+	offsetCoordinators        map[string]int32
 }
 
 func NewDefaultConnector(config *ConnectorConfig) *DefaultConnector {
@@ -83,6 +87,7 @@ func NewDefaultConnector(config *ConnectorConfig) *DefaultConnector {
 		maxConnectionsPerBroker: config.MaxConnectionsPerBroker,
 		clientId:                config.ClientId,
 		fetchSize:               config.FetchSize,
+		offsetCoordinators:      make(map[string]int32),
 	}
 
 	return connector
@@ -117,34 +122,59 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	return response.GetMessages(), nil
 }
 
-func (this *DefaultConnector) GetAvailableOffsets(group string, topic string, partition int32) (*OffsetResponse, error) {
-	panic("Not implemented yet")
+func (this *DefaultConnector) GetAvailableOffsets(group string, topic string, partition int32) (int64, error) {
+	coordinatorId, exists := this.offsetCoordinators[group]
+	if !exists {
+		err := this.refreshOffsetCoordinator(group)
+		if err != nil {
+			return -1, err
+		}
+		coordinatorId = this.offsetCoordinators[group]
+	}
+
+	Warnf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
+
+	var brokerLink *brokerLink
+	for _, link := range this.links {
+		if link.broker.NodeId == coordinatorId {
+			brokerLink = link
+			break
+		}
+	}
+
+	if brokerLink == nil {
+		return -1, errors.New(fmt.Sprintf("Could not find broker with node id %d", coordinatorId))
+	}
+
+	request := NewOffsetFetchRequest(group)
+	request.AddOffset(topic, partition)
+	bytes, err := this.syncSendAndReceive(brokerLink, request)
+	if err != nil {
+		return -1, err
+	}
+	response := new(OffsetFetchResponse)
+	decodingErr := this.decode(bytes, response)
+	if decodingErr != nil {
+		return -1, decodingErr.Error()
+	}
+
+	//TODO this is unsafe
+	return response.Offsets[topic][partition].Offset, nil
 }
 
 func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
 	for len(this.links) == 0 {
 		Info(this, "No connected brokers yet, refreshing metadata")
 		this.refreshMetadata(topics)
+		//TODO backoff
 	}
 
-	metadataResponses := make(chan *topicMetadataAndError, len(this.links))
-	for _, link := range this.links {
-		Debugf(this, "Requesting topic metadata for %s", link.broker)
-		go this.requestBrokerMetadata(link, topics, metadataResponses)
+	response, err := this.sendToAllAndReturnFirstSuccessful(NewTopicMetadataRequest(topics), this.topicMetadataValidator)
+	if response != nil {
+		return response.(*TopicMetadataResponse), err
+	} else {
+		return nil, err
 	}
-
-	var response *topicMetadataAndError
-	for i := 0; i < len(this.links); i++ {
-		response = <-metadataResponses
-		if response.err == nil {
-			break
-		}
-
-		Warnf(this, "Could not fetch metadata for topics %s from broker %s:%d", topics, response.link.broker.Host, response.link.broker.Port)
-	}
-
-
-	return response.metadata, response.err
 }
 
 func (this *DefaultConnector) Produce(message Message) error {
@@ -177,62 +207,41 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 				panic(fmt.Sprintf("incorrect port in broker connection string: %s", broker))
 			}
 
-			this.links = append(this.links, newBrokerLink(&Broker{Host: hostPort[0], Port: int32(port)},
-				this.keepAlive,
-				this.keepAliveTimeout,
-				this.maxConnectionsPerBroker))
+			this.links = append(this.links, newBrokerLink(&Broker{NodeId: -1, Host: hostPort[0], Port: int32(port)},
+					this.keepAlive,
+					this.keepAliveTimeout,
+					this.maxConnectionsPerBroker))
 		}
 	}
 
-	metadataResponses := make(chan *topicMetadataAndError, len(this.links))
-	for _, link := range this.links {
-		go this.requestBrokerMetadata(link, topics, metadataResponses)
+	response, err := this.sendToAllAndReturnFirstSuccessful(NewTopicMetadataRequest(topics), this.topicMetadataValidator)
+	if err != nil {
+		Errorf(this, "Could not get topic metadata from all known brokers")
+		return
 	}
-
-	for i := 0; i < len(this.links); i++ {
-		response := <-metadataResponses
-		Tracef(this, "Got metadata response from %s", response.link.broker)
-		if response.err != nil {
-			Warnf(this, "Metadata response from %s contained an error: %s", response.link.broker, response.err)
-			continue
-		}
-
-		brokers := make(map[int32]*brokerLink)
-		for _, broker := range response.metadata.Brokers {
-			brokers[broker.NodeId] = newBrokerLink(broker, this.keepAlive, this.keepAliveTimeout, this.maxConnectionsPerBroker)
-		}
-
-		for _, metadata := range response.metadata.TopicMetadata {
-			for _, partitionMetadata := range metadata.PartitionMetadata {
-				if leader, exists := brokers[partitionMetadata.Leader]; exists {
-					this.putLeader(metadata.TopicName, partitionMetadata.PartitionId, leader)
-				} else {
-					Warnf(this, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.TopicName, partitionMetadata.PartitionId)
-					//TODO: warn about incomplete broker list
-				}
-			}
-		}
-
-		break
-	}
+	this.refreshLeaders(response.(*TopicMetadataResponse))
 }
 
-func (this *DefaultConnector) requestBrokerMetadata(brokerLink *brokerLink, topics []string, metadataResponses chan *topicMetadataAndError) {
-	request := NewTopicMetadataRequest(topics)
-	bytes, err := this.syncSendAndReceive(brokerLink, request)
-	if err != nil {
-		metadataResponses <- &topicMetadataAndError{nil, brokerLink, err}
-		return
+func (this *DefaultConnector) refreshLeaders(response *TopicMetadataResponse) {
+	brokers := make(map[int32]*brokerLink)
+	for _, broker := range response.Brokers {
+		brokers[broker.NodeId] = newBrokerLink(broker, this.keepAlive, this.keepAliveTimeout, this.maxConnectionsPerBroker)
 	}
 
-	decoder := NewBinaryDecoder(bytes)
-	response := new(TopicMetadataResponse)
-	decodingErr := response.Read(decoder)
-	if decodingErr != nil {
-		metadataResponses <- &topicMetadataAndError{nil, brokerLink, decodingErr.Error()}
-		return
+	if len(brokers) != 0 && len(response.TopicMetadata) != 0 {
+		this.links = make([]*brokerLink, 0)
 	}
-	metadataResponses <- &topicMetadataAndError{response, brokerLink, nil}
+
+	for _, metadata := range response.TopicMetadata {
+		for _, partitionMetadata := range metadata.PartitionMetadata {
+			if leader, exists := brokers[partitionMetadata.Leader]; exists {
+				this.putLeader(metadata.TopicName, partitionMetadata.PartitionId, leader)
+			} else {
+				Warnf(this, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.TopicName, partitionMetadata.PartitionId)
+				//TODO: warn about incomplete broker list
+			}
+		}
+	}
 }
 
 func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
@@ -265,11 +274,68 @@ func (this *DefaultConnector) putLeader(topic string, partition int32, leader *b
 	this.leaders[topic][partition] = leader
 }
 
+func (this *DefaultConnector) refreshOffsetCoordinator(group string) error {
+	request := NewConsumerMetadataRequest(group)
+
+	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.consumerMetadataValidator)
+	if err != nil {
+		Errorf(this, "Could not get consumer metadata from all known brokers")
+		return err
+	}
+	this.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).CoordinatorId
+
+	return nil
+}
+
+func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingError {
+	decoder := NewBinaryDecoder(bytes)
+	decodingErr := response.Read(decoder)
+	if decodingErr != nil {
+		return decodingErr
+	}
+
+	return nil
+}
+
+func (this *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
+	for len(this.links) == 0 {
+		Info(this, "No connected brokers yet, refreshing metadata")
+		this.refreshMetadata(nil)
+		//TODO backoff
+	}
+
+	responses := make(chan *rawResponseAndError, len(this.links))
+	for i := 0; i < len(this.links); i++ {
+		link := this.links[i]
+		go func() {
+			bytes, err := this.syncSendAndReceive(link, request)
+			responses <- &rawResponseAndError{bytes, link, err}
+		}()
+	}
+
+	var response *rawResponseAndError
+	for i := 0; i < len(this.links); i++ {
+		response = <-responses
+		if response.err == nil {
+			if checkResult := check(response.bytes); checkResult != nil {
+				return checkResult, nil
+			} else {
+				response.err = errors.New("Check result did not pass")
+			}
+		}
+
+		Infof(this, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
+	}
+
+	return nil, response.err
+}
+
 func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
 	id, conn, err := link.getConnection()
 	if err != nil {
 		return nil, err
 	}
+	defer link.connectionPool.Return(conn)
 
 	if err := this.send(id, conn, request); err != nil {
 		return nil, err
@@ -309,6 +375,27 @@ func (this *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
 	}
 
 	return response, nil
+}
+
+func (this *DefaultConnector) topicMetadataValidator(bytes []byte) Response {
+	//TODO check topic and partition errors
+	response := new(TopicMetadataResponse)
+	err := this.decode(bytes, response)
+	if err != nil {
+		return nil
+	}
+
+	return response
+}
+
+func (this *DefaultConnector) consumerMetadataValidator(bytes []byte) Response {
+	response := new(ConsumerMetadataResponse)
+	err := this.decode(bytes, response)
+	if err != nil || response.Error != NoError {
+		return nil
+	}
+
+	return response
 }
 
 type brokerLink struct {
@@ -354,8 +441,8 @@ func correlationIdGenerator(out chan int32, stop chan bool) {
 	}
 }
 
-type topicMetadataAndError struct {
-	metadata *TopicMetadataResponse
-	link	 *brokerLink
-	err      error
+type rawResponseAndError struct {
+	bytes     []byte
+	link     *brokerLink
+	err       error
 }
