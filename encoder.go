@@ -17,6 +17,7 @@ package siesta
 
 import (
 	"encoding/binary"
+	"hash/crc32"
 )
 
 type Encoder interface {
@@ -29,16 +30,21 @@ type Encoder interface {
 
 	// Returns the size in bytes of this encoder
 	Size() int32
+	Reserve(UpdatableSlice)
+	UpdateReserved()
 }
 
 type BinaryEncoder struct {
 	buffer []byte
 	pos    int
+
+	stack []UpdatableSlice
 }
 
 func NewBinaryEncoder(buffer []byte) *BinaryEncoder {
 	return &BinaryEncoder{
 		buffer: buffer,
+		stack: make([]UpdatableSlice, 0),
 	}
 }
 
@@ -78,6 +84,22 @@ func (this *BinaryEncoder) Size() int32 {
 	return int32(len(this.buffer))
 }
 
+func (this *BinaryEncoder) Reserve(slice UpdatableSlice) {
+	length := slice.GetReserveLength()
+	slice.SetPosition(this.pos+length)
+	slice.Store(this.buffer[this.pos:this.pos+length])
+	this.stack = append(this.stack, slice)
+	this.pos += length
+}
+
+func (this *BinaryEncoder) UpdateReserved() {
+	stackLength := len(this.stack)-1
+	slice := this.stack[stackLength]
+	this.stack = this.stack[:stackLength]
+
+	slice.Update(this.buffer[slice.GetPosition():this.pos])
+}
+
 type SizingEncoder struct {
 	size int
 }
@@ -114,4 +136,71 @@ func (this *SizingEncoder) WriteBytes(value []byte) {
 
 func (this *SizingEncoder) Size() int32 {
 	return int32(this.size)
+}
+
+func (this *SizingEncoder) Reserve(slice UpdatableSlice) {
+	this.size += slice.GetReserveLength()
+}
+
+func (this *SizingEncoder) UpdateReserved() {
+	//do nothing
+}
+
+type UpdatableSlice interface {
+	GetReserveLength() int
+	SetPosition(int)
+	GetPosition() int
+	Store([]byte)
+	Update([]byte)
+}
+
+type LengthSlice struct {
+	pos int
+	slice []byte
+}
+
+func (this *LengthSlice) GetReserveLength() int {
+	return 4
+}
+
+func (this *LengthSlice) SetPosition(pos int) {
+	this.pos = pos
+}
+
+func (this *LengthSlice) GetPosition() int {
+	return this.pos
+}
+
+func (this *LengthSlice) Store(slice []byte) {
+	this.slice = slice
+}
+
+func (this *LengthSlice) Update(rest []byte) {
+	binary.BigEndian.PutUint32(this.slice, uint32(len(rest)))
+}
+
+type CrcSlice struct {
+	pos int
+	slice []byte
+}
+
+func (this *CrcSlice) GetReserveLength() int {
+	return 4
+}
+
+func (this *CrcSlice) SetPosition(pos int) {
+	this.pos = pos
+}
+
+func (this *CrcSlice) GetPosition() int {
+	return this.pos
+}
+
+func (this *CrcSlice) Store(slice []byte) {
+	this.slice = slice
+}
+
+func (this *CrcSlice) Update(rest []byte) {
+	crc := crc32.ChecksumIEEE(rest)
+	binary.BigEndian.PutUint32(this.slice, crc)
 }

@@ -187,6 +187,43 @@ func TestEncoderSize(t *testing.T) {
 	assert(t, encoder.Size(), int32(8))
 }
 
+func TestEncoderReserve(t *testing.T) {
+	expectingEncodedLength := []byte{0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01}
+	writeLength := func(encoder Encoder) {
+		encoder.WriteInt32(1)
+		encoder.Reserve(&LengthSlice{})
+		encoder.WriteInt64(1)
+		encoder.WriteInt32(1)
+		encoder.UpdateReserved()
+		encoder.WriteInt32(1)
+	}
+
+	expectingEncodedCRC := []byte{0x00, 0x00, 0x00, 0x01, 0x31, 0xB2, 0xDF, 0x49, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01}
+	writeCRC := func(encoder Encoder) {
+		encoder.WriteInt32(1)
+		encoder.Reserve(&CrcSlice{})
+		encoder.WriteInt64(1)
+		encoder.WriteInt32(1)
+		encoder.UpdateReserved()
+		encoder.WriteInt32(1)
+	}
+
+	sizer := NewSizingEncoder()
+	writeLength(sizer)
+	size := sizer.Size()
+	assert(t, size, int32(4+4+8+4+4))
+
+	bytes := make([]byte, size)
+	encoder := NewBinaryEncoder(bytes)
+	writeLength(encoder)
+	assert(t, bytes, expectingEncodedLength)
+
+	bytes = make([]byte, size)
+	encoder = NewBinaryEncoder(bytes)
+	writeCRC(encoder)
+	assert(t, bytes, expectingEncodedCRC)
+}
+
 func TestSizingEncoder(t *testing.T) {
 	int8encoder := NewSizingEncoder()
 	for i := 0; i < numValues; i++ {

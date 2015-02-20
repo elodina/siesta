@@ -42,6 +42,13 @@ func (this *MessageAndOffset) Read(decoder Decoder) *DecodingError {
 	return nil
 }
 
+func (this *MessageAndOffset) Write(encoder Encoder) {
+	encoder.WriteInt64(this.Offset)
+	encoder.Reserve(&CrcSlice{})
+	this.Message.Write(encoder)
+	encoder.UpdateReserved()
+}
+
 type MessageData struct {
 	Crc        int32
 	MagicByte  int8
@@ -84,6 +91,15 @@ func (this *MessageData) Read(decoder Decoder) *DecodingError {
 	//TODO decompression logic should be here, but we'll get back to this later
 
 	return nil
+}
+
+func (this *MessageData) Write(encoder Encoder) {
+	encoder.Reserve(&CrcSlice{})
+	encoder.WriteInt8(this.MagicByte)
+	encoder.WriteInt8(this.Attributes)
+	encoder.WriteBytes(this.Key)
+	encoder.WriteBytes(this.Value)
+	encoder.UpdateReserved()
 }
 
 type Message struct {
