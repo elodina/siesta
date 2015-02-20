@@ -18,6 +18,7 @@
 package siesta
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -25,7 +26,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"errors"
 )
 
 type Connector interface {
@@ -69,7 +69,7 @@ type DefaultConnector struct {
 	lock                    sync.Mutex
 
 	//offset coordination part
-	offsetCoordinators        map[string]int32
+	offsetCoordinators map[string]int32
 }
 
 func NewDefaultConnector(config *ConnectorConfig) *DefaultConnector {
@@ -208,9 +208,9 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 			}
 
 			this.links = append(this.links, newBrokerLink(&Broker{NodeId: -1, Host: hostPort[0], Port: int32(port)},
-					this.keepAlive,
-					this.keepAliveTimeout,
-					this.maxConnectionsPerBroker))
+				this.keepAlive,
+				this.keepAliveTimeout,
+				this.maxConnectionsPerBroker))
 		}
 	}
 
@@ -442,7 +442,7 @@ func correlationIdGenerator(out chan int32, stop chan bool) {
 }
 
 type rawResponseAndError struct {
-	bytes     []byte
-	link     *brokerLink
-	err       error
+	bytes []byte
+	link  *brokerLink
+	err   error
 }
