@@ -44,7 +44,7 @@ type BinaryEncoder struct {
 func NewBinaryEncoder(buffer []byte) *BinaryEncoder {
 	return &BinaryEncoder{
 		buffer: buffer,
-		stack: make([]UpdatableSlice, 0),
+		stack:  make([]UpdatableSlice, 0),
 	}
 }
 
@@ -86,14 +86,14 @@ func (this *BinaryEncoder) Size() int32 {
 
 func (this *BinaryEncoder) Reserve(slice UpdatableSlice) {
 	length := slice.GetReserveLength()
-	slice.SetPosition(this.pos+length)
-	slice.Store(this.buffer[this.pos:this.pos+length])
+	slice.SetPosition(this.pos + length)
+	slice.Store(this.buffer[this.pos : this.pos+length])
 	this.stack = append(this.stack, slice)
 	this.pos += length
 }
 
 func (this *BinaryEncoder) UpdateReserved() {
-	stackLength := len(this.stack)-1
+	stackLength := len(this.stack) - 1
 	slice := this.stack[stackLength]
 	this.stack = this.stack[:stackLength]
 
@@ -155,7 +155,7 @@ type UpdatableSlice interface {
 }
 
 type LengthSlice struct {
-	pos int
+	pos   int
 	slice []byte
 }
 
@@ -180,7 +180,7 @@ func (this *LengthSlice) Update(rest []byte) {
 }
 
 type CrcSlice struct {
-	pos int
+	pos   int
 	slice []byte
 }
 

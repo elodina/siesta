@@ -17,8 +17,8 @@ package siesta
 
 type ProduceRequest struct {
 	RequiredAcks int16
-	Timeout int32
-	Messages map[string]map[int32][]*MessageAndOffset
+	Timeout      int32
+	Messages     map[string]map[int32][]*MessageAndOffset
 }
 
 func (this *ProduceRequest) Key() int16 {
@@ -114,15 +114,15 @@ func (this *ProduceResponse) Read(decoder Decoder) *DecodingError {
 }
 
 type ProduceResponseData struct {
-	Error error
+	Error  error
 	Offset int64
 }
 
 const (
-	reason_InvalidProduceTopicsLength = "Invalid topics length in ProduceResponse"
-	reason_InvalidProduceTopic = "Invalid topic in ProduceResponse"
+	reason_InvalidProduceTopicsLength     = "Invalid topics length in ProduceResponse"
+	reason_InvalidProduceTopic            = "Invalid topic in ProduceResponse"
 	reason_InvalidProducePartitionsLength = "Invalid partitions length in ProduceResponse"
-	reason_InvalidProducePartition = "Invalid partition in ProduceResponse"
-	reason_InvalidProduceErrorCode = "Invalid error code in ProduceResponse"
-	reason_InvalidProduceOffset = "Invalid offset in ProduceResponse"
+	reason_InvalidProducePartition        = "Invalid partition in ProduceResponse"
+	reason_InvalidProduceErrorCode        = "Invalid error code in ProduceResponse"
+	reason_InvalidProduceOffset           = "Invalid offset in ProduceResponse"
 )
