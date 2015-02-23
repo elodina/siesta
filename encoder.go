@@ -201,6 +201,7 @@ func (this *CrcSlice) Store(slice []byte) {
 }
 
 func (this *CrcSlice) Update(rest []byte) {
+	//TODO https://github.com/Shopify/sarama/issues/255 - maybe port the mentioned CRC algo?
 	crc := crc32.ChecksumIEEE(rest)
 	binary.BigEndian.PutUint32(this.slice, crc)
 }

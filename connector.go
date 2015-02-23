@@ -333,15 +333,24 @@ func (this *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request,
 func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
 	id, conn, err := link.getConnection()
 	if err != nil {
+		link.failed()
 		return nil, err
 	}
 	defer link.connectionPool.Return(conn)
 
 	if err := this.send(id, conn, request); err != nil {
+		link.failed()
 		return nil, err
 	}
 
-	return this.receive(conn)
+	bytes, err := this.receive(conn)
+	if err != nil {
+		link.failed()
+		return nil, err
+	}
+
+	link.succeeded()
+	return bytes, err
 }
 
 func (this *DefaultConnector) send(correlationId int32, conn *net.TCPConn, request Request) error {
@@ -421,6 +430,17 @@ func newBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duratio
 		correlationIds: correlationIds,
 		stop:           stop,
 	}
+}
+
+func (this *brokerLink) failed() {
+	this.lastConnectTime = time.Now()
+	this.failedAttempts++
+}
+
+func (this *brokerLink) succeeded() {
+	timestamp := time.Now()
+	this.lastConnectTime = timestamp
+	this.lastSuccessfulConnectTime = timestamp
 }
 
 func (this *brokerLink) getConnection() (int32, *net.TCPConn, error) {
