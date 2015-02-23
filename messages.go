@@ -44,7 +44,7 @@ func (this *MessageAndOffset) Read(decoder Decoder) *DecodingError {
 
 func (this *MessageAndOffset) Write(encoder Encoder) {
 	encoder.WriteInt64(this.Offset)
-	encoder.Reserve(&CrcSlice{})
+	encoder.Reserve(&LengthSlice{})
 	this.Message.Write(encoder)
 	encoder.UpdateReserved()
 }

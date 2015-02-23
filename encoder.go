@@ -85,11 +85,9 @@ func (this *BinaryEncoder) Size() int32 {
 }
 
 func (this *BinaryEncoder) Reserve(slice UpdatableSlice) {
-	length := slice.GetReserveLength()
-	slice.SetPosition(this.pos + length)
-	slice.Store(this.buffer[this.pos : this.pos+length])
+	slice.SetPosition(this.pos)
 	this.stack = append(this.stack, slice)
-	this.pos += length
+	this.pos += slice.GetReserveLength()
 }
 
 func (this *BinaryEncoder) UpdateReserved() {
@@ -150,7 +148,6 @@ type UpdatableSlice interface {
 	GetReserveLength() int
 	SetPosition(int)
 	GetPosition() int
-	Store([]byte)
 	Update([]byte)
 }
 
@@ -171,17 +168,12 @@ func (this *LengthSlice) GetPosition() int {
 	return this.pos
 }
 
-func (this *LengthSlice) Store(slice []byte) {
-	this.slice = slice
-}
-
-func (this *LengthSlice) Update(rest []byte) {
-	binary.BigEndian.PutUint32(this.slice, uint32(len(rest)))
+func (this *LengthSlice) Update(slice []byte) {
+	binary.BigEndian.PutUint32(slice, uint32(len(slice)-this.GetReserveLength()))
 }
 
 type CrcSlice struct {
-	pos   int
-	slice []byte
+	pos int
 }
 
 func (this *CrcSlice) GetReserveLength() int {
@@ -196,12 +188,8 @@ func (this *CrcSlice) GetPosition() int {
 	return this.pos
 }
 
-func (this *CrcSlice) Store(slice []byte) {
-	this.slice = slice
-}
-
-func (this *CrcSlice) Update(rest []byte) {
+func (this *CrcSlice) Update(slice []byte) {
 	//TODO https://github.com/Shopify/sarama/issues/255 - maybe port the mentioned CRC algo?
-	crc := crc32.ChecksumIEEE(rest)
-	binary.BigEndian.PutUint32(this.slice, crc)
+	crc := crc32.ChecksumIEEE(slice[this.GetReserveLength():])
+	binary.BigEndian.PutUint32(slice, crc)
 }
