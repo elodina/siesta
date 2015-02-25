@@ -30,7 +30,8 @@ import (
 
 type Connector interface {
 	Consume(topic string, partition int32, offset int64) ([]*Message, error)
-	GetAvailableOffsets(group string, topic string, partition int32) (*OffsetResponse, error)
+	GetOffset(group string, topic string, partition int32) (int64, error)
+	GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error)
 	GetTopicMetadata(topics []string) (*TopicMetadataResponse, error)
 	Produce(message Message) error
 	Close() <-chan bool
@@ -119,10 +120,10 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 		return nil, decodingErr.Error()
 	}
 
-	return response.GetMessages(), nil
+	return response.GetMessages()
 }
 
-func (this *DefaultConnector) GetAvailableOffsets(group string, topic string, partition int32) (int64, error) {
+func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
 	coordinatorId, exists := this.offsetCoordinators[group]
 	if !exists {
 		err := this.refreshOffsetCoordinator(group)
@@ -160,6 +161,17 @@ func (this *DefaultConnector) GetAvailableOffsets(group string, topic string, pa
 
 	//TODO this is unsafe
 	return response.Offsets[topic][partition].Offset, nil
+}
+
+func (this *DefaultConnector) GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error) {
+	request := new(OffsetRequest)
+	request.AddPartitionOffsetRequestInfo(topic, partition, offsetTime, 1)
+	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.offsetValidator)
+	if response != nil {
+		return response.(*OffsetResponse).Offsets[topic][partition].Offsets[0], err
+	} else {
+		return -1, err
+	}
 }
 
 func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
@@ -402,6 +414,23 @@ func (this *DefaultConnector) consumerMetadataValidator(bytes []byte) Response {
 	err := this.decode(bytes, response)
 	if err != nil || response.Error != NoError {
 		return nil
+	}
+
+	return response
+}
+
+func (this *DefaultConnector) offsetValidator(bytes []byte) Response {
+	response := new(OffsetResponse)
+	err := this.decode(bytes, response)
+	if err != nil {
+		return nil
+	}
+	for _, offsets := range response.Offsets {
+		for _, offset := range offsets {
+			if offset.Error != NoError {
+				return nil
+			}
+		}
 	}
 
 	return response

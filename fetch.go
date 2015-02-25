@@ -97,10 +97,13 @@ func (this *FetchResponse) Read(decoder Decoder) *DecodingError {
 	return nil
 }
 
-func (this *FetchResponse) GetMessages() []*Message {
+func (this *FetchResponse) GetMessages() ([]*Message, error) {
 	messages := make([]*Message, 0)
 	for topic, partitionAndData := range this.Blocks {
 		for partition, data := range partitionAndData {
+			if data.Error != NoError {
+				return nil, data.Error
+			}
 			for _, messageAndOffset := range data.Messages {
 				message := new(Message)
 				message.Topic = topic
@@ -113,7 +116,7 @@ func (this *FetchResponse) GetMessages() []*Message {
 		}
 	}
 
-	return messages
+	return messages, nil
 }
 
 type PartitionFetchInfo struct {

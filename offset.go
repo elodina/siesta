@@ -52,7 +52,7 @@ func (this *OffsetRequest) Write(encoder Encoder) {
 }
 
 type OffsetResponse struct {
-	Offsets map[string][]*PartitionOffsets
+	Offsets map[string]map[int32]*PartitionOffsets
 }
 
 func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
@@ -61,12 +61,14 @@ func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reason_InvalidOffsetsLength)
 	}
 
-	this.Offsets = make(map[string][]*PartitionOffsets)
+	this.Offsets = make(map[string]map[int32]*PartitionOffsets)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
 			return NewDecodingError(err, reason_InvalidOffsetTopic)
 		}
+		offsetsForTopic := make(map[int32]*PartitionOffsets)
+		this.Offsets[topic] = offsetsForTopic
 
 		partitionOffsetsLength, err := decoder.GetInt32()
 		if err != nil {
@@ -74,12 +76,17 @@ func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
 		}
 
 		for j := int32(0); j < partitionOffsetsLength; j++ {
-			partitionOffsets := new(PartitionOffsets)
-			err := partitionOffsets.Read(decoder)
+			partition, err := decoder.GetInt32()
 			if err != nil {
-				return err
+				return NewDecodingError(err, reason_InvalidPartitionOffsetsPartition)
 			}
-			this.Offsets[topic] = append(this.Offsets[topic], partitionOffsets)
+
+			partitionOffsets := new(PartitionOffsets)
+			decodingErr := partitionOffsets.Read(decoder)
+			if decodingErr != nil {
+				return decodingErr
+			}
+			this.Offsets[topic][partition] = partitionOffsets
 		}
 	}
 
@@ -98,18 +105,11 @@ type PartitionOffsetRequestInfo struct {
 }
 
 type PartitionOffsets struct {
-	Partition int32
 	Error     error
 	Offsets   []int64
 }
 
 func (this *PartitionOffsets) Read(decoder Decoder) *DecodingError {
-	partition, err := decoder.GetInt32()
-	if err != nil {
-		return NewDecodingError(err, reason_InvalidPartitionOffsetsPartition)
-	}
-	this.Partition = partition
-
 	errCode, err := decoder.GetInt16()
 	if err != nil {
 		return NewDecodingError(err, reason_InvalidPartitionOffsetsErrorCode)

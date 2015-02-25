@@ -50,8 +50,8 @@ func TestOffsetResponse(t *testing.T) {
 	offsets, exists := singleOffsetResponse.Offsets["logs"]
 	assertFatal(t, exists, true)
 	assertFatal(t, len(offsets), 1)
-	offset := offsets[0]
-	assert(t, offset.Partition, int32(2))
+	offset, exists := offsets[2]
+	assertFatal(t, exists, true)
 	assert(t, offset.Error, NoError)
 	assertFatal(t, len(offset.Offsets), 1)
 	assert(t, offset.Offsets[0], int64(172))
@@ -62,14 +62,14 @@ func TestOffsetResponse(t *testing.T) {
 	offsets, exists = multipleOffsetResponse.Offsets["logs"]
 	assertFatal(t, exists, true)
 	assertFatal(t, len(offsets), 2)
-	offset1 := offsets[0]
-	assert(t, offset1.Partition, int32(3))
+	offset1, exists := offsets[3]
+	assertFatal(t, exists, true)
 	assert(t, offset1.Error, OffsetOutOfRange)
 	assertFatal(t, len(offset1.Offsets), 1)
 	assert(t, offset1.Offsets[0], int64(238))
 
-	offset2 := offsets[1]
-	assert(t, offset2.Partition, int32(4))
+	offset2, exists := offsets[4]
+	assertFatal(t, exists, true)
 	assert(t, offset2.Error, InvalidMessage)
 	assertFatal(t, len(offset2.Offsets), 1)
 	assert(t, offset2.Offsets[0], int64(205))
