@@ -83,7 +83,8 @@ func decode(t *testing.T, response Response, bytes []byte) {
 func decodeErr(t *testing.T, response Response, bytes []byte, expected *DecodingError) {
 	decoder := NewBinaryDecoder(bytes)
 	err := response.Read(decoder)
-	assert(t, err, expected)
+	assert(t, err.Error(), expected.Error())
+	assert(t, err.Reason(), expected.Reason())
 }
 
 func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) net.Listener {

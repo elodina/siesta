@@ -105,8 +105,8 @@ type PartitionOffsetRequestInfo struct {
 }
 
 type PartitionOffsets struct {
-	Error     error
-	Offsets   []int64
+	Error   error
+	Offsets []int64
 }
 
 func (this *PartitionOffsets) Read(decoder Decoder) *DecodingError {
