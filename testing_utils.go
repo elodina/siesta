@@ -41,6 +41,13 @@ func assertFatal(t *testing.T, actual interface{}, expected interface{}) {
 	}
 }
 
+func assertNot(t *testing.T, actual interface{}, expected interface{}) {
+	if reflect.DeepEqual(actual, expected) {
+		_, fn, line, _ := runtime.Caller(1)
+		t.Fatalf("Expected anything but %v, actual %v\n@%s:%d", expected, actual, fn, line)
+	}
+}
+
 func checkErr(t *testing.T, err error) {
 	if err != nil {
 		_, fn, line, _ := runtime.Caller(1)
@@ -122,18 +129,26 @@ func startTCPListener(t *testing.T) net.Listener {
 	return listener
 }
 
-func testConnector() *DefaultConnector {
-	config := &ConnectorConfig{
-		BrokerList:              []string{"localhost:9092"},
-		ReadTimeout:             5 * time.Second,
-		WriteTimeout:            5 * time.Second,
-		ConnectTimeout:          5 * time.Second,
-		KeepAlive:               true,
-		KeepAliveTimeout:        1 * time.Minute,
-		MaxConnections:          5,
-		MaxConnectionsPerBroker: 5,
-		FetchSize:               1024000,
-		ClientId:                "siesta",
+func testConnector(t *testing.T) *DefaultConnector {
+	config := NewConnectorConfig()
+	config.BrokerList = []string{"localhost:9092"}
+
+	connector, err := NewDefaultConnector(config)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return NewDefaultConnector(config)
+	return connector
+}
+
+func closeWithin(t *testing.T, timeout time.Duration, connector Connector) {
+	select {
+	case <-connector.Close():
+		{
+			Info("test", "Successfully closed connector")
+		}
+	case <-time.After(timeout):
+		{
+			t.Errorf("Failed to close connector within %d seconds", timeout.Seconds())
+		}
+	}
 }

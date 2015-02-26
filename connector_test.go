@@ -19,30 +19,128 @@ package siesta
 
 import (
 	"fmt"
+	"net"
+	"os"
 	"testing"
+	"time"
 )
 
-func TestDefaultConnectorConsume(t *testing.T) {
-	t.Skip()
+var ci bool = os.Getenv("TRAVIS_CI") != ""
+var brokerUp bool = true
+var brokerAddr string = "localhost:9092"
 
-	connector := testConnector()
-	messages, err := connector.Consume("siesta-1", 0, 0)
-	if err != nil {
-		t.Fatal(err)
+func init() {
+	conn, err := net.Dial("tcp", brokerAddr)
+	if err == nil {
+		brokerUp = true
+		conn.Close()
 	}
-
-	for _, message := range messages {
-		fmt.Printf("offset: %d, value: %s\n", message.Offset, string(message.Value))
-	}
-	<-connector.Close()
 }
 
-func TestDefaultConnectorTopicMetadata(t *testing.T) {
-	t.Skip()
+func TestDefaultConnectorFunctional(t *testing.T) {
+	if !brokerUp && !ci {
+		t.Skip("Broker is not running. Please spin up the broker at localhost:9092 for this test to work.")
+	}
 
-	connector := testConnector()
-	_, err := connector.GetTopicMetadata([]string{"test-2"})
+	numMessages := 1000
+	topicName := fmt.Sprintf("siesta-%d", time.Now().Unix())
+
+	connector := testConnector(t)
+	testTopicMetadata(t, topicName, connector)
+	testProduce(t, topicName, numMessages, connector)
+	testConsume(t, topicName, numMessages, connector)
+	closeWithin(t, time.Second, connector)
+	//check whether closing multiple times hangs
+	closeWithin(t, time.Second, connector)
+
+	anotherConnector := testConnector(t)
+	//should also work fine - must get topic metadata before consuming
+	testConsume(t, topicName, numMessages, anotherConnector)
+	closeWithin(t, time.Second, anotherConnector)
+}
+
+func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnector) {
+	metadata, err := connector.GetTopicMetadata([]string{topicName})
 	assertFatal(t, err, nil)
 
-	<-connector.Close()
+	assertNot(t, len(metadata.Brokers), 0)
+	assertNot(t, len(metadata.TopicMetadata), 0)
+	if len(metadata.Brokers) > 1 {
+		t.Skip("Cluster should consist only of one broker for this test to run.")
+	}
+
+	broker := metadata.Brokers[0]
+	assert(t, broker.NodeId, int32(0))
+	if ci {
+		// this can be asserted on Travis only as we are guaranteed to advertise the broker as localhost
+		assert(t, broker.Host, "localhost")
+	}
+	assert(t, broker.Port, int32(9092))
+
+	topicMetadata := findTopicMetadata(t, metadata.TopicMetadata, topicName)
+	assert(t, topicMetadata.Error, NoError)
+	assert(t, topicMetadata.TopicName, topicName)
+	assertFatal(t, len(topicMetadata.PartitionMetadata), 1)
+
+	partitionMetadata := topicMetadata.PartitionMetadata[0]
+	assert(t, partitionMetadata.Error, NoError)
+	assert(t, partitionMetadata.Isr, []int32{0})
+	assert(t, partitionMetadata.Leader, int32(0))
+	assert(t, partitionMetadata.PartitionId, int32(0))
+	assert(t, partitionMetadata.Replicas, []int32{0})
+}
+
+func testProduce(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {
+	produceRequest := new(ProduceRequest)
+	produceRequest.Timeout = 1000
+	produceRequest.RequiredAcks = 1
+	for i := 0; i < numMessages; i++ {
+		produceRequest.AddMessage(topicName, 0, &MessageData{
+			Key:   []byte(fmt.Sprintf("%d", numMessages-i)),
+			Value: []byte(fmt.Sprintf("%d", i)),
+		})
+	}
+
+	leader, err := connector.tryGetLeader(topicName, 0, 3)
+	assert(t, err, nil)
+	assertNot(t, leader, (*brokerLink)(nil))
+	bytes, err := connector.syncSendAndReceive(leader, produceRequest)
+	assertFatal(t, err, nil)
+
+	produceResponse := new(ProduceResponse)
+	decodingErr := connector.decode(bytes, produceResponse)
+	assertFatal(t, decodingErr, (*DecodingError)(nil))
+
+	topicBlock, exists := produceResponse.Blocks[topicName]
+	assertFatal(t, exists, true)
+	partitionBlock, exists := topicBlock[int32(0)]
+	assertFatal(t, exists, true)
+
+	assert(t, partitionBlock.Error, NoError)
+	assert(t, partitionBlock.Offset, int64(0))
+}
+
+func testConsume(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {
+	messages, err := connector.Consume(topicName, 0, 0)
+	assertFatal(t, err, nil)
+	assertFatal(t, len(messages), numMessages)
+	for i := 0; i < numMessages; i++ {
+		message := messages[i]
+		assert(t, message.Topic, topicName)
+		assert(t, message.Partition, int32(0))
+		assert(t, message.Offset, int64(i))
+		assert(t, message.Key, []byte(fmt.Sprintf("%d", numMessages-i)))
+		assert(t, message.Value, []byte(fmt.Sprintf("%d", i)))
+	}
+}
+
+func findTopicMetadata(t *testing.T, metadata []*TopicMetadata, topic string) *TopicMetadata {
+	for _, topicMetadata := range metadata {
+		if topicMetadata.TopicName == topic {
+			return topicMetadata
+		}
+	}
+
+	t.Fatalf("TopicMetadata for topic %s not found", topic)
+	return nil
 }

@@ -108,3 +108,20 @@ func TestConnectionPoolReturnMoreThanAllowed(t *testing.T) {
 	assert(t, len(pool.connections), size)
 	listener.Close()
 }
+
+func TestConnectionPoolBadAddresses(t *testing.T) {
+	pool := newConnectionPool("localhost", 1, true, 1*time.Second)
+	conn, err := pool.Borrow()
+	if err == nil {
+		t.Error("Should not be able to borrow connection to a host without a port")
+		conn.Close()
+	}
+
+	addr := "localhost:0"
+	pool = newConnectionPool(addr, 1, true, 1*time.Second)
+	conn, err = pool.Borrow()
+	if err == nil {
+		t.Errorf("Should not be able to connect to %s", addr)
+		conn.Close()
+	}
+}
