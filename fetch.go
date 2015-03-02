@@ -105,13 +105,25 @@ func (this *FetchResponse) GetMessages() ([]*Message, error) {
 				return nil, data.Error
 			}
 			for _, messageAndOffset := range data.Messages {
-				message := new(Message)
-				message.Topic = topic
-				message.Partition = partition
-				message.Offset = messageAndOffset.Offset
-				message.Key = messageAndOffset.Message.Key
-				message.Value = messageAndOffset.Message.Value
-				messages = append(messages, message)
+				if messageAndOffset.Message.Nested != nil {
+					for _, nested := range messageAndOffset.Message.Nested {
+						message := new(Message)
+						message.Topic = topic
+						message.Partition = partition
+						message.Offset = nested.Offset
+						message.Key = nested.Message.Key
+						message.Value = nested.Message.Value
+						messages = append(messages, message)
+					}
+				} else {
+					message := new(Message)
+					message.Topic = topic
+					message.Partition = partition
+					message.Offset = messageAndOffset.Offset
+					message.Key = messageAndOffset.Message.Key
+					message.Value = messageAndOffset.Message.Value
+					messages = append(messages, message)
+				}
 			}
 		}
 	}
@@ -148,17 +160,11 @@ func (this *FetchResponseData) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reason_InvalidMessageSetLength)
 	}
 
-	for decoder.Remaining() > 0 {
-		messageAndOffset := new(MessageAndOffset)
-		err := messageAndOffset.Read(decoder)
-		if err != nil {
-			if err.Error() != EOF {
-				return err
-			}
-			continue
-		}
-		this.Messages = append(this.Messages, messageAndOffset)
+	messages, decodingErr := ReadMessageSet(decoder)
+	if decodingErr != nil {
+		return decodingErr
 	}
+	this.Messages = messages
 
 	return nil
 }

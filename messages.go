@@ -15,6 +15,23 @@ limitations under the License. */
 
 package siesta
 
+import (
+	"bytes"
+	"compress/gzip"
+	"io/ioutil"
+)
+
+type CompressionCodec int
+
+const (
+	CompressionNone   CompressionCodec = 0
+	CompressionGZip   CompressionCodec = 1
+	CompressionSnappy CompressionCodec = 2
+	CompressionLZ4    CompressionCodec = 3
+)
+
+const compressionCodecMask int8 = 3
+
 type MessageAndOffset struct {
 	Offset  int64
 	Message *MessageData
@@ -49,12 +66,31 @@ func (this *MessageAndOffset) Write(encoder Encoder) {
 	encoder.UpdateReserved()
 }
 
+func ReadMessageSet(decoder Decoder) ([]*MessageAndOffset, *DecodingError) {
+	messages := make([]*MessageAndOffset, 0)
+	for decoder.Remaining() > 0 {
+		messageAndOffset := new(MessageAndOffset)
+		err := messageAndOffset.Read(decoder)
+		if err != nil {
+			if err.Error() != EOF {
+				return nil, err
+			}
+			continue
+		}
+		messages = append(messages, messageAndOffset)
+	}
+
+	return messages, nil
+}
+
 type MessageData struct {
 	Crc        int32
 	MagicByte  int8
 	Attributes int8
 	Key        []byte
 	Value      []byte
+
+	Nested []*MessageAndOffset
 }
 
 func (this *MessageData) Read(decoder Decoder) *DecodingError {
@@ -88,11 +124,38 @@ func (this *MessageData) Read(decoder Decoder) *DecodingError {
 	}
 	this.Value = value
 
-	//TODO decompression logic should be here, but we'll get back to this later
+	compressionCodec := CompressionCodec(this.Attributes & compressionCodecMask)
+	switch compressionCodec {
+	case CompressionNone:
+	case CompressionGZip:
+		{
+			if this.Value == nil {
+				return NewDecodingError(NoDataToUncompress, reason_NoGzipData)
+			}
+			reader, err := gzip.NewReader(bytes.NewReader(this.Value))
+			if err != nil {
+				return NewDecodingError(err, reason_MalformedGzipData)
+			}
+			if this.Value, err = ioutil.ReadAll(reader); err != nil {
+				return NewDecodingError(err, reason_MalformedGzipData)
+			}
+
+			messages, decodingErr := ReadMessageSet(NewBinaryDecoder(this.Value))
+			if decodingErr != nil {
+				return decodingErr
+			}
+			this.Nested = messages
+		}
+	case CompressionSnappy:
+		panic("Not implemented yet")
+	case CompressionLZ4:
+		panic("Not implemented yet")
+	}
 
 	return nil
 }
 
+//TODO compress and write if needed
 func (this *MessageData) Write(encoder Encoder) {
 	encoder.Reserve(&CrcSlice{})
 	encoder.WriteInt8(this.MagicByte)
@@ -118,4 +181,6 @@ var (
 	reason_InvalidMessageAttributes      = "Invalid Message attributes"
 	reason_InvalidMessageKey             = "Invalid Message key"
 	reason_InvalidMessageValue           = "Invalid Message value"
+	reason_NoGzipData                    = "No data to uncompress for GZip encoded message"
+	reason_MalformedGzipData             = "Malformed GZip encoded message"
 )

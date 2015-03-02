@@ -20,6 +20,8 @@ import "errors"
 //signals that an end of file or stream has been reached unexpectedly
 var EOF = errors.New("End of file reached")
 
+var NoDataToUncompress = errors.New("No data to uncompress")
+
 var NoError = errors.New("No error - it worked!")
 
 var Unknown = errors.New("An unexpected server error")
