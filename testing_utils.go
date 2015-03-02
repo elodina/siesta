@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-const TCPListenerAddress = "localhost:0"
+const tcpListenerAddress = "localhost:0"
 
 func assert(t *testing.T, actual interface{}, expected interface{}) {
 	if !reflect.DeepEqual(actual, expected) {
@@ -96,7 +96,7 @@ func decodeErr(t *testing.T, response Response, bytes []byte, expected *Decoding
 
 func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel chan []byte) net.Listener {
 	netName := "tcp"
-	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)
+	addr, _ := net.ResolveTCPAddr(netName, tcpListenerAddress)
 	listener, err := net.ListenTCP(netName, addr)
 	if err != nil {
 		t.Errorf("Unable to start tcp request listener: %s", err)
@@ -120,7 +120,7 @@ func awaitForTCPRequestAndReturn(t *testing.T, bufferSize int, resultChannel cha
 
 func startTCPListener(t *testing.T) net.Listener {
 	netName := "tcp"
-	addr, _ := net.ResolveTCPAddr(netName, TCPListenerAddress)
+	addr, _ := net.ResolveTCPAddr(netName, tcpListenerAddress)
 	listener, err := net.ListenTCP(netName, addr)
 	if err != nil {
 		t.Errorf("Unable to start tcp request listener: %s", err)

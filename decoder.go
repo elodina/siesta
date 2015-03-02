@@ -19,27 +19,44 @@ import (
 	"encoding/binary"
 )
 
+// Decoder is able to decode a Kafka wire protocol message into actual data.
 type Decoder interface {
+	// Gets an int8 from this decoder. Returns EOF if end of stream is reached.
 	GetInt8() (int8, error)
+
+	// Gets an int16 from this decoder. Returns EOF if end of stream is reached.
 	GetInt16() (int16, error)
+
+	// Gets an int32 from this decoder. Returns EOF if end of stream is reached.
 	GetInt32() (int32, error)
+
+	// Gets an int64 from this decoder. Returns EOF if end of stream is reached.
 	GetInt64() (int64, error)
+
+	// Gets a []byte from this decoder. Returns EOF if end of stream is reached.
 	GetBytes() ([]byte, error)
+
+	// Gets a string from this decoder. Returns EOF if end of stream is reached.
 	GetString() (string, error)
+
+	// Tells how many bytes left unread in this decoder.
 	Remaining() int
 }
 
+// BinaryDecoder implements Decoder and is able to decode a Kafka wire protocol message into actual data.
 type BinaryDecoder struct {
 	raw []byte
 	pos int
 }
 
+// Creates a new BinaryDecoder that will decode a given []byte.
 func NewBinaryDecoder(raw []byte) *BinaryDecoder {
 	return &BinaryDecoder{
 		raw: raw,
 	}
 }
 
+// Gets an int8 from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetInt8() (int8, error) {
 	if this.Remaining() < 1 {
 		this.pos = len(this.raw)
@@ -50,6 +67,7 @@ func (this *BinaryDecoder) GetInt8() (int8, error) {
 	return value, nil
 }
 
+// Gets an int16 from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetInt16() (int16, error) {
 	if this.Remaining() < 2 {
 		this.pos = len(this.raw)
@@ -60,6 +78,7 @@ func (this *BinaryDecoder) GetInt16() (int16, error) {
 	return value, nil
 }
 
+// Gets an int32 from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetInt32() (int32, error) {
 	if this.Remaining() < 4 {
 		this.pos = len(this.raw)
@@ -70,6 +89,7 @@ func (this *BinaryDecoder) GetInt32() (int32, error) {
 	return value, nil
 }
 
+// Gets an int64 from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetInt64() (int64, error) {
 	if this.Remaining() < 8 {
 		this.pos = len(this.raw)
@@ -80,6 +100,7 @@ func (this *BinaryDecoder) GetInt64() (int64, error) {
 	return value, nil
 }
 
+// Gets a []byte from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetBytes() ([]byte, error) {
 	l, err := this.GetInt32()
 
@@ -103,6 +124,7 @@ func (this *BinaryDecoder) GetBytes() ([]byte, error) {
 	return value, nil
 }
 
+// Gets a string from this decoder. Returns EOF if end of stream is reached.
 func (this *BinaryDecoder) GetString() (string, error) {
 	l, err := this.GetInt16()
 
@@ -124,6 +146,7 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	return value, nil
 }
 
+// Tells how many bytes left unread in this decoder.
 func (this *BinaryDecoder) Remaining() int {
 	return len(this.raw) - this.pos
 }

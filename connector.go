@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+// Siesta is a low-level Apache Kafka client in Go.
+
 package siesta
 
 import (
@@ -28,35 +30,73 @@ import (
 	"time"
 )
 
+// Connector is an interface that should provide ways to clearly interact with Kafka cluster and hide all broker management stuff from user.
 type Connector interface {
-	Consume(topic string, partition int32, offset int64) ([]*Message, error)
-	GetOffset(group string, topic string, partition int32) (int64, error)
-	GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error)
+	// GetTopicMetadata is primarily used to discover leaders for given topics and how many partitions these topics have.
+	// Passing it an empty topic list will retrieve metadata for all topics in a cluster.
 	GetTopicMetadata(topics []string) (*TopicMetadataResponse, error)
-	Produce(message Message) error
+
+	// GetAvailableOffset issues an offset request to a specified topic and partition with a given offset time.
+	// More on offset time here - https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-OffsetRequest
+	GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error)
+
+	// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
+	Consume(topic string, partition int32, offset int64) ([]*Message, error)
+
+	// GetOffset is a part of new offset management API. Not fully functional yet.
+	GetOffset(group string, topic string, partition int32) (int64, error)
+
+	// Tells the Connector to close all existing connections and stop.
+	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 	Close() <-chan bool
 
 	//TODO: implement GetGroupMetadata, GetGroupAvailableOffsets, CommitGroupOffset API calls
+	//Produce(message Message) error
 	//GetGroupMetadata(group string)
 	//GetGroupAvailableOffsets(group string)
 	//CommitGroupOffset(topic string, partition int32, offset int64) error
 }
 
+// ConnectorConfig is used to pass multiple configuration values for a Connector
 type ConnectorConfig struct {
-	BrokerList              []string
-	ReadTimeout             time.Duration
-	WriteTimeout            time.Duration
-	ConnectTimeout          time.Duration
-	KeepAlive               bool
-	KeepAliveTimeout        time.Duration
-	MaxConnections          int
+	// BrokerList is a bootstrap list to discover other brokers in a cluster. At least one broker is required.
+	BrokerList []string
+
+	// ReadTimeout is a timeout to read the response from a TCP socket.
+	ReadTimeout time.Duration
+
+	// WriteTimeout is a timeout to write the request to a TCP socket.
+	WriteTimeout time.Duration
+
+	// ConnectTimeout is a timeout to connect to a TCP socket.
+	ConnectTimeout time.Duration
+
+	// Sets whether the connection should be kept alive.
+	KeepAlive bool
+
+	// A keep alive period for a TCP connection.
+	KeepAliveTimeout time.Duration
+
+	// Maximum number of open connections for a connector.
+	MaxConnections int
+
+	// Maximum number of open connections for a single broker for a connector.
 	MaxConnectionsPerBroker int
-	FetchSize               int32
-	MetadataRetries         int
-	MetadataBackoff         time.Duration
-	ClientId                string
+
+	// Maximum fetch size in bytes which will be used in all Consume() calls.
+	FetchSize int32
+
+	// Number of retries to get topic metadata.
+	MetadataRetries int
+
+	// Backoff value between topic metadata requests.
+	MetadataBackoff time.Duration
+
+	// Client id that will be used by a connector to identify client requests by broker.
+	ClientId string
 }
 
+// Returns a new ConnectorConfig with sane defaults.
 func NewConnectorConfig() *ConnectorConfig {
 	return &ConnectorConfig{
 		ReadTimeout:             5 * time.Second,
@@ -73,6 +113,7 @@ func NewConnectorConfig() *ConnectorConfig {
 	}
 }
 
+//Validates this ConnectorConfig. Returns a corresponding error if the ConnectorConfig is invalid and nil otherwise.
 func (this *ConnectorConfig) Validate() error {
 	if this == nil {
 		return errors.New("Please provide a ConnectorConfig.")
@@ -125,6 +166,7 @@ func (this *ConnectorConfig) Validate() error {
 	return nil
 }
 
+// A default (and only one for now) Connector implementation for Siesta library.
 type DefaultConnector struct {
 	config  ConnectorConfig
 	leaders map[string]map[int32]*brokerLink
@@ -135,6 +177,7 @@ type DefaultConnector struct {
 	offsetCoordinators map[string]int32
 }
 
+// Creates a new DefaultConnector with a given ConnectorConfig. May return an error if the passed config is invalid.
 func NewDefaultConnector(config *ConnectorConfig) (*DefaultConnector, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -152,10 +195,39 @@ func NewDefaultConnector(config *ConnectorConfig) (*DefaultConnector, error) {
 	return connector, nil
 }
 
+// Returns a string representation of this DefaultConnector.
 func (this *DefaultConnector) String() string {
 	return "Default Connector"
 }
 
+// GetTopicMetadata is primarily used to discover leaders for given topics and how many partitions these topics have.
+// Passing it an empty topic list will retrieve metadata for all topics in a cluster.
+func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
+	for i := 0; i <= this.config.MetadataRetries; i++ {
+		if metadata, err := this.getMetadata(topics); err == nil {
+			return metadata, nil
+		}
+
+		Debugf(this, "GetTopicMetadata for %s failed after %d try", topics, i)
+		time.Sleep(this.config.MetadataBackoff)
+	}
+
+	return nil, errors.New(fmt.Sprintf("Could not get topic metadata for %s after %d retries", topics, this.config.MetadataRetries))
+}
+
+// GetAvailableOffset issues an offset request to a specified topic and partition with a given offset time.
+func (this *DefaultConnector) GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error) {
+	request := new(OffsetRequest)
+	request.AddPartitionOffsetRequestInfo(topic, partition, offsetTime, 1)
+	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.offsetValidator)
+	if response != nil {
+		return response.(*OffsetResponse).Offsets[topic][partition].Offsets[0], err
+	} else {
+		return -1, err
+	}
+}
+
+// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
 func (this *DefaultConnector) Consume(topic string, partition int32, offset int64) ([]*Message, error) {
 	link := this.getLeader(topic, partition)
 	if link == nil {
@@ -185,6 +257,7 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	return response.GetMessages()
 }
 
+// GetOffset is a part of new offset management API. Not fully functional yet.
 func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
 	coordinatorId, exists := this.offsetCoordinators[group]
 	if !exists {
@@ -225,35 +298,13 @@ func (this *DefaultConnector) GetOffset(group string, topic string, partition in
 	return response.Offsets[topic][partition].Offset, nil
 }
 
-func (this *DefaultConnector) GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error) {
-	request := new(OffsetRequest)
-	request.AddPartitionOffsetRequestInfo(topic, partition, offsetTime, 1)
-	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.offsetValidator)
-	if response != nil {
-		return response.(*OffsetResponse).Offsets[topic][partition].Offsets[0], err
-	} else {
-		return -1, err
-	}
-}
+//func (this *DefaultConnector) Produce(message Message) error {
+//	//TODO keep in mind: If RequiredAcks == 0 the server will not send any response (this is the only case where the server will not reply to a request)
+//	panic("Not implemented yet")
+//}
 
-func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
-	for i := 0; i <= this.config.MetadataRetries; i++ {
-		if metadata, err := this.getMetadata(topics); err == nil {
-			return metadata, nil
-		}
-
-		Debugf(this, "GetTopicMetadata for %s failed after %d try", topics, i)
-		time.Sleep(this.config.MetadataBackoff)
-	}
-
-	return nil, errors.New(fmt.Sprintf("Could not get topic metadata for %s after %d retries", topics, this.config.MetadataRetries))
-}
-
-func (this *DefaultConnector) Produce(message Message) error {
-	//TODO keep in mind: If RequiredAcks == 0 the server will not send any response (this is the only case where the server will not reply to a request)
-	panic("Not implemented yet")
-}
-
+// Tells the Connector to close all existing connections and stop.
+// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 func (this *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
@@ -266,9 +317,9 @@ func (this *DefaultConnector) Close() <-chan bool {
 }
 
 func (this *DefaultConnector) closeBrokerLinks() {
-    for _, link := range this.links {
-        link.stop <- true
-    }
+	for _, link := range this.links {
+		link.stop <- true
+	}
 }
 
 func (this *DefaultConnector) refreshMetadata(topics []string) {
@@ -307,7 +358,7 @@ func (this *DefaultConnector) refreshLeaders(response *TopicMetadataResponse) {
 	}
 
 	if len(brokers) != 0 && len(response.TopicMetadata) != 0 {
-        this.closeBrokerLinks()
+		this.closeBrokerLinks()
 		this.links = make([]*brokerLink, 0)
 	}
 
@@ -470,7 +521,7 @@ func (this *DefaultConnector) send(correlationId int32, conn *net.TCPConn, reque
 }
 
 func (this *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
-	conn.SetReadDeadline(time.Now().Add(this.config.WriteTimeout))
+	conn.SetReadDeadline(time.Now().Add(this.config.ReadTimeout))
 	header := make([]byte, 8)
 	_, err := io.ReadFull(conn, header)
 	if err != nil {
@@ -600,7 +651,6 @@ func correlationIdGenerator(out chan int32, stop chan bool) {
 		case out <- correlationId:
 			correlationId++
 		case <-stop:
-            Critical("", "Stopping correlation id generation")
 			return
 		}
 	}
