@@ -257,14 +257,18 @@ func (this *DefaultConnector) Produce(message Message) error {
 func (this *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
-		for _, link := range this.links {
-			link.stop <- true
-		}
+		this.closeBrokerLinks()
 		this.links = nil
 		closed <- true
 	}()
 
 	return closed
+}
+
+func (this *DefaultConnector) closeBrokerLinks() {
+    for _, link := range this.links {
+        link.stop <- true
+    }
 }
 
 func (this *DefaultConnector) refreshMetadata(topics []string) {
@@ -303,6 +307,7 @@ func (this *DefaultConnector) refreshLeaders(response *TopicMetadataResponse) {
 	}
 
 	if len(brokers) != 0 && len(response.TopicMetadata) != 0 {
+        this.closeBrokerLinks()
 		this.links = make([]*brokerLink, 0)
 	}
 
@@ -595,6 +600,7 @@ func correlationIdGenerator(out chan int32, stop chan bool) {
 		case out <- correlationId:
 			correlationId++
 		case <-stop:
+            Critical("", "Stopping correlation id generation")
 			return
 		}
 	}
