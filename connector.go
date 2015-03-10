@@ -510,7 +510,6 @@ func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Reque
 		link.failed()
 		return nil, err
 	}
-	defer link.connectionPool.Return(conn)
 
 	if err := this.send(id, conn, request); err != nil {
 		link.failed()
@@ -524,6 +523,7 @@ func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Reque
 	}
 
 	link.succeeded()
+    link.connectionPool.Return(conn)
 	return bytes, err
 }
 
@@ -578,11 +578,13 @@ func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes
 				}
 
 				if topicMetadata.Error != NoError {
+                    Infof(this, "Topic metadata err: %s", topicMetadata.Error)
 					return nil
 				}
 
 				for _, partitionMetadata := range topicMetadata.PartitionMetadata {
 					if partitionMetadata.Error != NoError && partitionMetadata.Error != ReplicaNotAvailable {
+                        Infof(this, "Partition metadata err: %s", partitionMetadata.Error)
 						return nil
 					}
 				}
