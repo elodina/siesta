@@ -463,7 +463,6 @@ func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingE
 func (this *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
     if len(this.links) == 0 {
         this.refreshMetadata(nil)
-        return nil, errors.New("Empty broker list")
     }
 
     response, err := this.sendToAllLinks(this.links, request, check)
