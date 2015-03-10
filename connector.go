@@ -564,7 +564,7 @@ func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes
 				}
 
 				for _, partitionMetadata := range topicMetadata.PartitionMetadata {
-					if partitionMetadata.Error != NoError {
+					if partitionMetadata.Error != NoError && partitionMetadata.Error != ReplicaNotAvailable {
 						return nil
 					}
 				}
