@@ -168,11 +168,11 @@ func (this *ConnectorConfig) Validate() error {
 
 // A default (and only one for now) Connector implementation for Siesta library.
 type DefaultConnector struct {
-	config  ConnectorConfig
-	leaders map[string]map[int32]*brokerLink
-	links   []*brokerLink
-    bootstrapLinks []*brokerLink
-	lock    sync.Mutex
+	config         ConnectorConfig
+	leaders        map[string]map[int32]*brokerLink
+	links          []*brokerLink
+	bootstrapLinks []*brokerLink
+	lock           sync.Mutex
 
 	//offset coordination part
 	offsetCoordinators map[string]int32
@@ -308,10 +308,10 @@ func (this *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
 		this.closeBrokerLinks()
-        for _, link := range this.bootstrapLinks {
-            link.stop <- true
-        }
-        this.bootstrapLinks = nil
+		for _, link := range this.bootstrapLinks {
+			link.stop <- true
+		}
+		this.bootstrapLinks = nil
 		this.links = nil
 		closed <- true
 	}()
@@ -349,10 +349,10 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 	response, err := this.sendToAllLinks(this.links, NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics))
 	if err != nil {
 		Warnf(this, "Could not get topic metadata from all known brokers, trying bootstrap brokers...")
-        if response, err = this.sendToAllLinks(this.bootstrapLinks, NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics)); err != nil {
-            Errorf(this, "Could not get topic metadata from all known brokers")
-            return
-        }
+		if response, err = this.sendToAllLinks(this.bootstrapLinks, NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics)); err != nil {
+			Errorf(this, "Could not get topic metadata from all known brokers")
+			return
+		}
 	}
 	this.refreshLeaders(response.(*TopicMetadataResponse))
 }
@@ -461,47 +461,47 @@ func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingE
 }
 
 func (this *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
-    if len(this.links) == 0 {
-        this.refreshMetadata(nil)
-    }
+	if len(this.links) == 0 {
+		this.refreshMetadata(nil)
+	}
 
-    response, err := this.sendToAllLinks(this.links, request, check)
-    if err != nil {
-        response, err = this.sendToAllLinks(this.bootstrapLinks, request, check)
-    }
+	response, err := this.sendToAllLinks(this.links, request, check)
+	if err != nil {
+		response, err = this.sendToAllLinks(this.bootstrapLinks, request, check)
+	}
 
-    return response, err
+	return response, err
 }
 
 func (this *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request, check func([]byte) Response) (Response, error) {
-    if len(links) == 0 {
-        return nil, errors.New("Empty broker list")
-    }
+	if len(links) == 0 {
+		return nil, errors.New("Empty broker list")
+	}
 
-    responses := make(chan *rawResponseAndError, len(links))
-    for i := 0; i < len(links); i++ {
-        link := links[i]
-        go func() {
-            bytes, err := this.syncSendAndReceive(link, request)
-            responses <- &rawResponseAndError{bytes, link, err}
-        }()
-    }
+	responses := make(chan *rawResponseAndError, len(links))
+	for i := 0; i < len(links); i++ {
+		link := links[i]
+		go func() {
+			bytes, err := this.syncSendAndReceive(link, request)
+			responses <- &rawResponseAndError{bytes, link, err}
+		}()
+	}
 
-    var response *rawResponseAndError
-    for i := 0; i < len(links); i++ {
-        response = <-responses
-        if response.err == nil {
-            if checkResult := check(response.bytes); checkResult != nil {
-                return checkResult, nil
-            } else {
-                response.err = errors.New("Check result did not pass")
-            }
-        }
+	var response *rawResponseAndError
+	for i := 0; i < len(links); i++ {
+		response = <-responses
+		if response.err == nil {
+			if checkResult := check(response.bytes); checkResult != nil {
+				return checkResult, nil
+			} else {
+				response.err = errors.New("Check result did not pass")
+			}
+		}
 
-        Infof(this, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
-    }
+		Infof(this, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
+	}
 
-    return nil, response.err
+	return nil, response.err
 }
 
 func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
@@ -523,7 +523,7 @@ func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Reque
 	}
 
 	link.succeeded()
-    link.connectionPool.Return(conn)
+	link.connectionPool.Return(conn)
 	return bytes, err
 }
 
@@ -578,13 +578,13 @@ func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes
 				}
 
 				if topicMetadata.Error != NoError {
-                    Infof(this, "Topic metadata err: %s", topicMetadata.Error)
+					Infof(this, "Topic metadata err: %s", topicMetadata.Error)
 					return nil
 				}
 
 				for _, partitionMetadata := range topicMetadata.PartitionMetadata {
 					if partitionMetadata.Error != NoError && partitionMetadata.Error != ReplicaNotAvailable {
-                        Infof(this, "Partition metadata err: %s", partitionMetadata.Error)
+						Infof(this, "Partition metadata err: %s", partitionMetadata.Error)
 						return nil
 					}
 				}
