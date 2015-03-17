@@ -19,6 +19,7 @@ package siesta
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"testing"
@@ -47,6 +48,7 @@ func TestDefaultConnectorFunctional(t *testing.T) {
 
 	connector := testConnector(t)
 	testTopicMetadata(t, topicName, connector)
+	testOffsetStorage(t, topicName, connector)
 	testProduce(t, topicName, numMessages, connector)
 	testConsume(t, topicName, numMessages, connector)
 	closeWithin(t, time.Second, connector)
@@ -88,6 +90,22 @@ func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnect
 	assert(t, partitionMetadata.Leader, int32(0))
 	assert(t, partitionMetadata.PartitionId, int32(0))
 	assert(t, partitionMetadata.Replicas, []int32{0})
+}
+
+func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnector) {
+	group := fmt.Sprintf("test-%d", time.Now().Unix())
+	targetOffset := rand.Int63()
+
+	offset, err := connector.GetOffset(group, topicName, 0)
+	assertFatal(t, err, UnknownTopicOrPartition)
+	assert(t, offset, int64(-1))
+
+	err = connector.CommitOffset(group, topicName, 0, targetOffset)
+	assertFatal(t, err, nil)
+
+	offset, err = connector.GetOffset(group, topicName, 0)
+	assertFatal(t, err, nil)
+	assert(t, offset, targetOffset)
 }
 
 func testProduce(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {

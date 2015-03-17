@@ -30,6 +30,8 @@ import (
 	"time"
 )
 
+const InvalidOffset int64 = -1
+
 // Connector is an interface that should provide ways to clearly interact with Kafka cluster and hide all broker management stuff from user.
 type Connector interface {
 	// GetTopicMetadata is primarily used to discover leaders for given topics and how many partitions these topics have.
@@ -45,6 +47,8 @@ type Connector interface {
 
 	// GetOffset is a part of new offset management API. Not fully functional yet.
 	GetOffset(group string, topic string, partition int32) (int64, error)
+
+	CommitOffset(group string, topic string, partition int32, offset int64) error
 
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
@@ -92,6 +96,12 @@ type ConnectorConfig struct {
 	// Backoff value between topic metadata requests.
 	MetadataBackoff time.Duration
 
+	// Number of retries to commit an offset.
+	CommitOffsetRetries int
+
+	// Backoff value between commit offset requests.
+	CommitOffsetBackoff time.Duration
+
 	// Client id that will be used by a connector to identify client requests by broker.
 	ClientId string
 }
@@ -107,8 +117,10 @@ func NewConnectorConfig() *ConnectorConfig {
 		MaxConnections:          5,
 		MaxConnectionsPerBroker: 5,
 		FetchSize:               1024000,
-		MetadataRetries:         3,
+		MetadataRetries:         5,
 		MetadataBackoff:         200 * time.Millisecond,
+		CommitOffsetRetries:     5,
+		CommitOffsetBackoff:     200 * time.Millisecond,
 		ClientId:                "siesta",
 	}
 }
@@ -157,6 +169,14 @@ func (this *ConnectorConfig) Validate() error {
 
 	if this.MetadataBackoff < time.Millisecond {
 		return errors.New("MetadataBackoff must be at least 1ms.")
+	}
+
+	if this.CommitOffsetRetries < 0 {
+		return errors.New("CommitOffsetRetries cannot be less than 0.")
+	}
+
+	if this.CommitOffsetBackoff < time.Millisecond {
+		return errors.New("CommitOffsetBackoff must be at least 1ms.")
 	}
 
 	if this.ClientId == "" {
@@ -250,6 +270,7 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
 		this.removeLeader(topic, partition)
+		Errorf(this, "Could not decode a FetchResponse. Reason: %s", decodingErr.Reason())
 		return nil, decodingErr.Error()
 	}
 
@@ -258,43 +279,48 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 
 // GetOffset is a part of new offset management API. Not fully functional yet.
 func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
-	coordinatorId, exists := this.offsetCoordinators[group]
-	if !exists {
-		err := this.refreshOffsetCoordinator(group)
-		if err != nil {
-			return -1, err
-		}
-		coordinatorId = this.offsetCoordinators[group]
-	}
-
-	Warnf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
-
-	var brokerLink *brokerLink
-	for _, link := range this.links {
-		if link.broker.NodeId == coordinatorId {
-			brokerLink = link
-			break
-		}
-	}
-
-	if brokerLink == nil {
-		return -1, errors.New(fmt.Sprintf("Could not find broker with node id %d", coordinatorId))
+	coordinator, err := this.getOffsetCoordinator(group)
+	if err != nil {
+		return InvalidOffset, err
 	}
 
 	request := NewOffsetFetchRequest(group)
 	request.AddOffset(topic, partition)
-	bytes, err := this.syncSendAndReceive(brokerLink, request)
+	bytes, err := this.syncSendAndReceive(coordinator, request)
 	if err != nil {
-		return -1, err
+		return InvalidOffset, err
 	}
 	response := new(OffsetFetchResponse)
 	decodingErr := this.decode(bytes, response)
 	if decodingErr != nil {
-		return -1, decodingErr.Error()
+		Errorf(this, "Could not decode an OffsetFetchResponse. Reason: %s", decodingErr.Reason())
+		return InvalidOffset, decodingErr.Error()
 	}
 
-	//TODO this is unsafe
-	return response.Offsets[topic][partition].Offset, nil
+	if topicOffsets, exist := response.Offsets[topic]; !exist {
+		return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested topic")
+	} else {
+		if offset, exists := topicOffsets[partition]; !exists {
+			return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested partition")
+		} else if offset.Error != NoError {
+			return InvalidOffset, offset.Error
+		} else {
+			return offset.Offset, nil
+		}
+	}
+}
+
+func (this *DefaultConnector) CommitOffset(group string, topic string, partition int32, offset int64) error {
+	for i := 0; i <= this.config.CommitOffsetRetries; i++ {
+		if err := this.tryCommitOffset(group, topic, partition, offset); err == nil {
+			return nil
+		}
+
+		Debugf(this, "Failed to commit offset %d for group %s, topic %s, partition %d after %d try", offset, group, topic, partition, i)
+		time.Sleep(this.config.CommitOffsetBackoff)
+	}
+
+	return errors.New(fmt.Sprintf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, this.config.CommitOffsetRetries))
 }
 
 //func (this *DefaultConnector) Produce(message Message) error {
@@ -450,10 +476,72 @@ func (this *DefaultConnector) refreshOffsetCoordinator(group string) error {
 	return nil
 }
 
+func (this *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, error) {
+	coordinatorId, exists := this.offsetCoordinators[group]
+	if !exists {
+		err := this.refreshOffsetCoordinator(group)
+		if err != nil {
+			return nil, err
+		}
+		coordinatorId = this.offsetCoordinators[group]
+	}
+
+	Debugf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
+
+	var brokerLink *brokerLink
+	for _, link := range this.links {
+		if link.broker.NodeId == coordinatorId {
+			brokerLink = link
+			break
+		}
+	}
+
+	if brokerLink == nil {
+		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorId)
+	}
+
+	return brokerLink, nil
+}
+
+func (this *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
+	coordinator, err := this.getOffsetCoordinator(group)
+	if err != nil {
+		return err
+	}
+
+	request := NewOffsetCommitRequest(group)
+	request.AddOffset(topic, partition, offset, time.Now().Unix(), "")
+
+	bytes, err := this.syncSendAndReceive(coordinator, request)
+	if err != nil {
+		return err
+	}
+
+	response := new(OffsetCommitResponse)
+	decodingErr := this.decode(bytes, response)
+	if decodingErr != nil {
+		Errorf(this, "Could not decode an OffsetCommitResponse. Reason: %s", decodingErr.Reason())
+		return decodingErr.Error()
+	}
+
+	if topicErrors, exist := response.Offsets[topic]; !exist {
+		return fmt.Errorf("OffsetCommitResponse does not contain information about requested topic")
+	} else {
+		if partitionError, exist := topicErrors[partition]; !exist {
+			return fmt.Errorf("OffsetCommitResponse does not contain information about requested partition")
+		} else if partitionError != NoError {
+			return partitionError
+		}
+	}
+
+	return nil
+}
+
 func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingError {
 	decoder := NewBinaryDecoder(bytes)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
+		Errorf(this, "Could not decode a response. Reason: %s", decodingErr.Reason())
 		return decodingErr
 	}
 
