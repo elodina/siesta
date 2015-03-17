@@ -97,6 +97,12 @@ type ConnectorConfig struct {
 	// Backoff value between commit offset requests.
 	CommitOffsetBackoff time.Duration
 
+	// Number of retries to get consumer metadata.
+	ConsumerMetadataRetries int
+
+	// Backoff value between consumer metadata requests.
+	ConsumerMetadataBackoff time.Duration
+
 	// Client id that will be used by a connector to identify client requests by broker.
 	ClientId string
 }
@@ -116,6 +122,8 @@ func NewConnectorConfig() *ConnectorConfig {
 		MetadataBackoff:         200 * time.Millisecond,
 		CommitOffsetRetries:     5,
 		CommitOffsetBackoff:     200 * time.Millisecond,
+		ConsumerMetadataRetries: 15,
+		ConsumerMetadataBackoff: 500 * time.Millisecond,
 		ClientId:                "siesta",
 	}
 }
@@ -172,6 +180,14 @@ func (this *ConnectorConfig) Validate() error {
 
 	if this.CommitOffsetBackoff < time.Millisecond {
 		return errors.New("CommitOffsetBackoff must be at least 1ms.")
+	}
+
+	if this.ConsumerMetadataRetries < 0 {
+		return errors.New("ConsumerMetadataRetries cannot be less than 0.")
+	}
+
+	if this.ConsumerMetadataBackoff < time.Millisecond {
+		return errors.New("ConsumerMetadataBackoff must be at least 1ms.")
 	}
 
 	if this.ClientId == "" {
@@ -460,11 +476,24 @@ func (this *DefaultConnector) removeLeader(topic string, partition int32) {
 }
 
 func (this *DefaultConnector) refreshOffsetCoordinator(group string) error {
+	for i := 0; i <= this.config.ConsumerMetadataRetries; i++ {
+		if err := this.tryRefreshOffsetCoordinator(group); err == nil {
+			return nil
+		}
+
+		Debugf(this, "Failed to get consumer coordinator for group %s after %d try", group, i)
+		time.Sleep(this.config.ConsumerMetadataBackoff)
+	}
+
+	return fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, this.config.ConsumerMetadataRetries)
+}
+
+func (this *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
 	request := NewConsumerMetadataRequest(group)
 
 	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.consumerMetadataValidator)
 	if err != nil {
-		Errorf(this, "Could not get consumer metadata from all known brokers")
+		Infof(this, "Could not get consumer metadata from all known brokers")
 		return err
 	}
 	this.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).CoordinatorId

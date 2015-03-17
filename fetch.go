@@ -99,36 +99,42 @@ func (this *FetchResponse) Read(decoder Decoder) *DecodingError {
 
 func (this *FetchResponse) GetMessages() ([]*Message, error) {
 	messages := make([]*Message, 0)
+
+	collector := func(topic string, partition int32, offset int64, key []byte, value []byte) {
+		messages = append(messages, &Message{
+			Topic:     topic,
+			Partition: partition,
+			Offset:    offset,
+			Key:       key,
+			Value:     value,
+		})
+	}
+
+	err := this.CollectMessages(collector)
+	return messages, err
+}
+
+// CollectMessages traverses this FetchResponse and applies a collector function to each message
+// giving the possibility to avoid response -> siesta.Message -> other.Message conversion if necessary.
+func (this *FetchResponse) CollectMessages(collector func(topic string, partition int32, offset int64, key []byte, value []byte)) error {
 	for topic, partitionAndData := range this.Blocks {
 		for partition, data := range partitionAndData {
 			if data.Error != NoError {
-				return nil, data.Error
+				return data.Error
 			}
 			for _, messageAndOffset := range data.Messages {
 				if messageAndOffset.Message.Nested != nil {
 					for _, nested := range messageAndOffset.Message.Nested {
-						message := new(Message)
-						message.Topic = topic
-						message.Partition = partition
-						message.Offset = nested.Offset
-						message.Key = nested.Message.Key
-						message.Value = nested.Message.Value
-						messages = append(messages, message)
+						collector(topic, partition, nested.Offset, nested.Message.Key, nested.Message.Value)
 					}
 				} else {
-					message := new(Message)
-					message.Topic = topic
-					message.Partition = partition
-					message.Offset = messageAndOffset.Offset
-					message.Key = messageAndOffset.Message.Key
-					message.Value = messageAndOffset.Message.Value
-					messages = append(messages, message)
+					collector(topic, partition, messageAndOffset.Offset, messageAndOffset.Message.Key, messageAndOffset.Message.Value)
 				}
 			}
 		}
 	}
 
-	return messages, nil
+	return nil
 }
 
 type PartitionFetchInfo struct {

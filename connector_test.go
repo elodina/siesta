@@ -96,6 +96,8 @@ func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnect
 	group := fmt.Sprintf("test-%d", time.Now().Unix())
 	targetOffset := rand.Int63()
 
+	//    //trigger __consumer_offsets topic creation first
+	//    connector.GetOffset(group, topicName, 0)
 	offset, err := connector.GetOffset(group, topicName, 0)
 	assertFatal(t, err, UnknownTopicOrPartition)
 	assert(t, offset, int64(-1))
