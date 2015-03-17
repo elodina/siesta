@@ -45,20 +45,15 @@ type Connector interface {
 	// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
 	Consume(topic string, partition int32, offset int64) ([]*Message, error)
 
-	// GetOffset is a part of new offset management API. Not fully functional yet.
+	// GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 	GetOffset(group string, topic string, partition int32) (int64, error)
 
+	// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
 	CommitOffset(group string, topic string, partition int32, offset int64) error
 
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 	Close() <-chan bool
-
-	//TODO: implement GetGroupMetadata, GetGroupAvailableOffsets, CommitGroupOffset API calls
-	//Produce(message Message) error
-	//GetGroupMetadata(group string)
-	//GetGroupAvailableOffsets(group string)
-	//CommitGroupOffset(topic string, partition int32, offset int64) error
 }
 
 // ConnectorConfig is used to pass multiple configuration values for a Connector
@@ -277,7 +272,7 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	return response.GetMessages()
 }
 
-// GetOffset is a part of new offset management API. Not fully functional yet.
+// GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
 	coordinator, err := this.getOffsetCoordinator(group)
 	if err != nil {
@@ -310,6 +305,7 @@ func (this *DefaultConnector) GetOffset(group string, topic string, partition in
 	}
 }
 
+// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
 func (this *DefaultConnector) CommitOffset(group string, topic string, partition int32, offset int64) error {
 	for i := 0; i <= this.config.CommitOffsetRetries; i++ {
 		if err := this.tryCommitOffset(group, topic, partition, offset); err == nil {
