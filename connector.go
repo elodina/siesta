@@ -42,8 +42,8 @@ type Connector interface {
 	// More on offset time here - https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-OffsetRequest
 	GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error)
 
-	// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
-	Consume(topic string, partition int32, offset int64) ([]*Message, error)
+	// Fetch issues a single fetch request to a broker responsible for a given topic and partition and returns a FetchResponse that contains messages starting from a given offset.
+	Fetch(topic string, partition int32, offset int64) (*FetchResponse, error)
 
 	// GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 	GetOffset(group string, topic string, partition int32) (int64, error)
@@ -257,8 +257,8 @@ func (this *DefaultConnector) GetAvailableOffset(topic string, partition int32, 
 	}
 }
 
-// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
-func (this *DefaultConnector) Consume(topic string, partition int32, offset int64) ([]*Message, error) {
+// Fetch issues a single fetch request to a broker responsible for a given topic and partition and returns a FetchResponse that contains messages starting from a given offset.
+func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64) (*FetchResponse, error) {
 	link := this.getLeader(topic, partition)
 	if link == nil {
 		leader, err := this.tryGetLeader(topic, partition, this.config.MetadataRetries)
@@ -285,7 +285,7 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 		return nil, decodingErr.Error()
 	}
 
-	return response.GetMessages()
+	return response, nil
 }
 
 // GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.

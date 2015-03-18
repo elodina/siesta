@@ -97,6 +97,9 @@ func (this *FetchResponse) Read(decoder Decoder) *DecodingError {
 	return nil
 }
 
+// GetMessages traverses this FetchResponse and collects all messages.
+// Returns an error if FetchResponse contains one.
+// Messages should be ordered by offset.
 func (this *FetchResponse) GetMessages() ([]*Message, error) {
 	messages := make([]*Message, 0)
 

@@ -96,8 +96,6 @@ func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnect
 	group := fmt.Sprintf("test-%d", time.Now().Unix())
 	targetOffset := rand.Int63()
 
-	//    //trigger __consumer_offsets topic creation first
-	//    connector.GetOffset(group, topicName, 0)
 	offset, err := connector.GetOffset(group, topicName, 0)
 	assertFatal(t, err, UnknownTopicOrPartition)
 	assert(t, offset, int64(-1))
@@ -141,7 +139,9 @@ func testProduce(t *testing.T, topicName string, numMessages int, connector *Def
 }
 
 func testConsume(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {
-	messages, err := connector.Consume(topicName, 0, 0)
+	response, err := connector.Fetch(topicName, 0, 0)
+	assertFatal(t, err, nil)
+	messages, err := response.GetMessages()
 	assertFatal(t, err, nil)
 	assertFatal(t, len(messages), numMessages)
 	for i := 0; i < numMessages; i++ {
