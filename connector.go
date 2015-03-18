@@ -30,6 +30,8 @@ import (
 	"time"
 )
 
+const InvalidOffset int64 = -1
+
 // Connector is an interface that should provide ways to clearly interact with Kafka cluster and hide all broker management stuff from user.
 type Connector interface {
 	// GetTopicMetadata is primarily used to discover leaders for given topics and how many partitions these topics have.
@@ -43,18 +45,15 @@ type Connector interface {
 	// Consume issues a single fetch request to a broker responsible for a given topic and partition and returns messages starting from a given offset.
 	Consume(topic string, partition int32, offset int64) ([]*Message, error)
 
-	// GetOffset is a part of new offset management API. Not fully functional yet.
+	// GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 	GetOffset(group string, topic string, partition int32) (int64, error)
+
+	// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
+	CommitOffset(group string, topic string, partition int32, offset int64) error
 
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 	Close() <-chan bool
-
-	//TODO: implement GetGroupMetadata, GetGroupAvailableOffsets, CommitGroupOffset API calls
-	//Produce(message Message) error
-	//GetGroupMetadata(group string)
-	//GetGroupAvailableOffsets(group string)
-	//CommitGroupOffset(topic string, partition int32, offset int64) error
 }
 
 // ConnectorConfig is used to pass multiple configuration values for a Connector
@@ -92,6 +91,18 @@ type ConnectorConfig struct {
 	// Backoff value between topic metadata requests.
 	MetadataBackoff time.Duration
 
+	// Number of retries to commit an offset.
+	CommitOffsetRetries int
+
+	// Backoff value between commit offset requests.
+	CommitOffsetBackoff time.Duration
+
+	// Number of retries to get consumer metadata.
+	ConsumerMetadataRetries int
+
+	// Backoff value between consumer metadata requests.
+	ConsumerMetadataBackoff time.Duration
+
 	// Client id that will be used by a connector to identify client requests by broker.
 	ClientId string
 }
@@ -107,8 +118,12 @@ func NewConnectorConfig() *ConnectorConfig {
 		MaxConnections:          5,
 		MaxConnectionsPerBroker: 5,
 		FetchSize:               1024000,
-		MetadataRetries:         3,
+		MetadataRetries:         5,
 		MetadataBackoff:         200 * time.Millisecond,
+		CommitOffsetRetries:     5,
+		CommitOffsetBackoff:     200 * time.Millisecond,
+		ConsumerMetadataRetries: 15,
+		ConsumerMetadataBackoff: 500 * time.Millisecond,
 		ClientId:                "siesta",
 	}
 }
@@ -157,6 +172,22 @@ func (this *ConnectorConfig) Validate() error {
 
 	if this.MetadataBackoff < time.Millisecond {
 		return errors.New("MetadataBackoff must be at least 1ms.")
+	}
+
+	if this.CommitOffsetRetries < 0 {
+		return errors.New("CommitOffsetRetries cannot be less than 0.")
+	}
+
+	if this.CommitOffsetBackoff < time.Millisecond {
+		return errors.New("CommitOffsetBackoff must be at least 1ms.")
+	}
+
+	if this.ConsumerMetadataRetries < 0 {
+		return errors.New("ConsumerMetadataRetries cannot be less than 0.")
+	}
+
+	if this.ConsumerMetadataBackoff < time.Millisecond {
+		return errors.New("ConsumerMetadataBackoff must be at least 1ms.")
 	}
 
 	if this.ClientId == "" {
@@ -250,51 +281,58 @@ func (this *DefaultConnector) Consume(topic string, partition int32, offset int6
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
 		this.removeLeader(topic, partition)
+		Errorf(this, "Could not decode a FetchResponse. Reason: %s", decodingErr.Reason())
 		return nil, decodingErr.Error()
 	}
 
 	return response.GetMessages()
 }
 
-// GetOffset is a part of new offset management API. Not fully functional yet.
+// GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
-	coordinatorId, exists := this.offsetCoordinators[group]
-	if !exists {
-		err := this.refreshOffsetCoordinator(group)
-		if err != nil {
-			return -1, err
-		}
-		coordinatorId = this.offsetCoordinators[group]
-	}
-
-	Warnf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
-
-	var brokerLink *brokerLink
-	for _, link := range this.links {
-		if link.broker.NodeId == coordinatorId {
-			brokerLink = link
-			break
-		}
-	}
-
-	if brokerLink == nil {
-		return -1, errors.New(fmt.Sprintf("Could not find broker with node id %d", coordinatorId))
+	coordinator, err := this.getOffsetCoordinator(group)
+	if err != nil {
+		return InvalidOffset, err
 	}
 
 	request := NewOffsetFetchRequest(group)
 	request.AddOffset(topic, partition)
-	bytes, err := this.syncSendAndReceive(brokerLink, request)
+	bytes, err := this.syncSendAndReceive(coordinator, request)
 	if err != nil {
-		return -1, err
+		return InvalidOffset, err
 	}
 	response := new(OffsetFetchResponse)
 	decodingErr := this.decode(bytes, response)
 	if decodingErr != nil {
-		return -1, decodingErr.Error()
+		Errorf(this, "Could not decode an OffsetFetchResponse. Reason: %s", decodingErr.Reason())
+		return InvalidOffset, decodingErr.Error()
 	}
 
-	//TODO this is unsafe
-	return response.Offsets[topic][partition].Offset, nil
+	if topicOffsets, exist := response.Offsets[topic]; !exist {
+		return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested topic")
+	} else {
+		if offset, exists := topicOffsets[partition]; !exists {
+			return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested partition")
+		} else if offset.Error != NoError {
+			return InvalidOffset, offset.Error
+		} else {
+			return offset.Offset, nil
+		}
+	}
+}
+
+// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
+func (this *DefaultConnector) CommitOffset(group string, topic string, partition int32, offset int64) error {
+	for i := 0; i <= this.config.CommitOffsetRetries; i++ {
+		if err := this.tryCommitOffset(group, topic, partition, offset); err == nil {
+			return nil
+		}
+
+		Debugf(this, "Failed to commit offset %d for group %s, topic %s, partition %d after %d try", offset, group, topic, partition, i)
+		time.Sleep(this.config.CommitOffsetBackoff)
+	}
+
+	return errors.New(fmt.Sprintf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, this.config.CommitOffsetRetries))
 }
 
 //func (this *DefaultConnector) Produce(message Message) error {
@@ -438,14 +476,88 @@ func (this *DefaultConnector) removeLeader(topic string, partition int32) {
 }
 
 func (this *DefaultConnector) refreshOffsetCoordinator(group string) error {
+	for i := 0; i <= this.config.ConsumerMetadataRetries; i++ {
+		if err := this.tryRefreshOffsetCoordinator(group); err == nil {
+			return nil
+		}
+
+		Debugf(this, "Failed to get consumer coordinator for group %s after %d try", group, i)
+		time.Sleep(this.config.ConsumerMetadataBackoff)
+	}
+
+	return fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, this.config.ConsumerMetadataRetries)
+}
+
+func (this *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
 	request := NewConsumerMetadataRequest(group)
 
 	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.consumerMetadataValidator)
 	if err != nil {
-		Errorf(this, "Could not get consumer metadata from all known brokers")
+		Infof(this, "Could not get consumer metadata from all known brokers")
 		return err
 	}
 	this.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).CoordinatorId
+
+	return nil
+}
+
+func (this *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, error) {
+	coordinatorId, exists := this.offsetCoordinators[group]
+	if !exists {
+		err := this.refreshOffsetCoordinator(group)
+		if err != nil {
+			return nil, err
+		}
+		coordinatorId = this.offsetCoordinators[group]
+	}
+
+	Debugf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
+
+	var brokerLink *brokerLink
+	for _, link := range this.links {
+		if link.broker.NodeId == coordinatorId {
+			brokerLink = link
+			break
+		}
+	}
+
+	if brokerLink == nil {
+		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorId)
+	}
+
+	return brokerLink, nil
+}
+
+func (this *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
+	coordinator, err := this.getOffsetCoordinator(group)
+	if err != nil {
+		return err
+	}
+
+	request := NewOffsetCommitRequest(group)
+	request.AddOffset(topic, partition, offset, time.Now().Unix(), "")
+
+	bytes, err := this.syncSendAndReceive(coordinator, request)
+	if err != nil {
+		return err
+	}
+
+	response := new(OffsetCommitResponse)
+	decodingErr := this.decode(bytes, response)
+	if decodingErr != nil {
+		Errorf(this, "Could not decode an OffsetCommitResponse. Reason: %s", decodingErr.Reason())
+		return decodingErr.Error()
+	}
+
+	if topicErrors, exist := response.Offsets[topic]; !exist {
+		return fmt.Errorf("OffsetCommitResponse does not contain information about requested topic")
+	} else {
+		if partitionError, exist := topicErrors[partition]; !exist {
+			return fmt.Errorf("OffsetCommitResponse does not contain information about requested partition")
+		} else if partitionError != NoError {
+			return partitionError
+		}
+	}
 
 	return nil
 }
@@ -454,6 +566,7 @@ func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingE
 	decoder := NewBinaryDecoder(bytes)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
+		Errorf(this, "Could not decode a response. Reason: %s", decodingErr.Reason())
 		return decodingErr
 	}
 
