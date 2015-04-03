@@ -85,6 +85,9 @@ type ConnectorConfig struct {
 	// Maximum fetch size in bytes which will be used in all Consume() calls.
 	FetchSize int32
 
+	// The maximum amount of time the server will block before answering the fetch request if there isn't sufficient data to immediately satisfy FetchMinBytes
+	FetchMaxWaitTime int32
+
 	// Number of retries to get topic metadata.
 	MetadataRetries int
 
@@ -118,6 +121,7 @@ func NewConnectorConfig() *ConnectorConfig {
 		MaxConnections:          5,
 		MaxConnectionsPerBroker: 5,
 		FetchSize:               1024000,
+		FetchMaxWaitTime:        1000,
 		MetadataRetries:         5,
 		MetadataBackoff:         200 * time.Millisecond,
 		CommitOffsetRetries:     5,
@@ -269,6 +273,7 @@ func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64)
 	}
 
 	request := new(FetchRequest)
+	request.MaxWaitTime = this.config.FetchMaxWaitTime
 	request.AddFetch(topic, partition, offset, this.config.FetchSize)
 	bytes, err := this.syncSendAndReceive(link, request)
 	if err != nil {
