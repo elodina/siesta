@@ -85,6 +85,9 @@ type ConnectorConfig struct {
 	// Maximum fetch size in bytes which will be used in all Consume() calls.
 	FetchSize int32
 
+	// The minimum amount of data the server should return for a fetch request. If insufficient data is available the request will block
+	FetchMinBytes int32
+
 	// The maximum amount of time the server will block before answering the fetch request if there isn't sufficient data to immediately satisfy FetchMinBytes
 	FetchMaxWaitTime int32
 
@@ -273,6 +276,7 @@ func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64)
 	}
 
 	request := new(FetchRequest)
+	request.MinBytes = this.config.FetchMinBytes
 	request.MaxWaitTime = this.config.FetchMaxWaitTime
 	request.AddFetch(topic, partition, offset, this.config.FetchSize)
 	bytes, err := this.syncSendAndReceive(link, request)
