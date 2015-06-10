@@ -72,7 +72,7 @@ func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnect
 	}
 
 	broker := metadata.Brokers[0]
-	assert(t, broker.NodeID, int32(0))
+	assert(t, broker.ID, int32(0))
 	if ci {
 		// this can be asserted on Travis only as we are guaranteed to advertise the broker as localhost
 		assert(t, broker.Host, "localhost")

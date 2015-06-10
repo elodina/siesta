@@ -38,9 +38,9 @@ func TestConsumerMetadataResponse(t *testing.T) {
 	goodConsumerMetadataResponse := new(ConsumerMetadataResponse)
 	decode(t, goodConsumerMetadataResponse, goodConsumerMetadataResponseBytes)
 	assert(t, goodConsumerMetadataResponse.Error, ErrNoError)
-	assert(t, goodConsumerMetadataResponse.CoordinatorID, int32(0))
-	assert(t, goodConsumerMetadataResponse.CoordinatorHost, "localhost")
-	assert(t, goodConsumerMetadataResponse.CoordinatorPort, int32(9092))
+	assert(t, goodConsumerMetadataResponse.Coordinator.ID, int32(0))
+	assert(t, goodConsumerMetadataResponse.Coordinator.Host, "localhost")
+	assert(t, goodConsumerMetadataResponse.Coordinator.Port, int32(9092))
 
 	decodeErr(t, new(ConsumerMetadataResponse), invalidErrCodeConsumerMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidConsumerMetadataErrorCode))
 	decodeErr(t, new(ConsumerMetadataResponse), invalidCoordinatorIDConsumerMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidConsumerMetadataCoordinatorID))

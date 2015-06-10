@@ -89,7 +89,7 @@ func (tmr *MetadataResponse) Read(decoder Decoder) *DecodingError {
 
 // Broker contains information about a Kafka broker in cluster - its ID, host name and port.
 type Broker struct {
-	NodeID int32
+	ID int32
 	Host   string
 	Port   int32
 }
@@ -103,7 +103,7 @@ func (n *Broker) Read(decoder Decoder) *DecodingError {
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidBrokerNodeID)
 	}
-	n.NodeID = nodeID
+	n.ID = nodeID
 
 	host, err := decoder.GetString()
 	if err != nil {

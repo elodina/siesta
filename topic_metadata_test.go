@@ -62,7 +62,7 @@ func TestTopicMetadataResponse(t *testing.T) {
 	decode(t, brokerMetadataResponse, brokerMetadataResponseBytes)
 	assertFatal(t, len(brokerMetadataResponse.Brokers), 1)
 	broker := brokerMetadataResponse.Brokers[0]
-	assert(t, broker.NodeID, int32(0))
+	assert(t, broker.ID, int32(0))
 	assert(t, broker.Host, "localhost")
 	assert(t, broker.Port, int32(9092))
 	assertFatal(t, len(brokerMetadataResponse.TopicsMetadata), 0)

@@ -58,7 +58,7 @@ func (cmr *ConsumerMetadataResponse) Read(decoder Decoder) *DecodingError {
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidConsumerMetadataCoordinatorID)
 	}
-	cmr.Coordinator.NodeID = coordID
+	cmr.Coordinator.ID = coordID
 
 	coordHost, err := decoder.GetString()
 	if err != nil {

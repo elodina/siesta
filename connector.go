@@ -388,7 +388,7 @@ func (dc *DefaultConnector) refreshMetadata(topics []string) {
 				panic(fmt.Sprintf("incorrect port in broker connection string: %s", broker))
 			}
 
-			dc.bootstrapLinks = append(dc.bootstrapLinks, newBrokerLink(&Broker{NodeID: -1, Host: hostPort[0], Port: int32(port)},
+			dc.bootstrapLinks = append(dc.bootstrapLinks, newBrokerLink(&Broker{ID: -1, Host: hostPort[0], Port: int32(port)},
 				dc.config.KeepAlive,
 				dc.config.KeepAliveTimeout,
 				dc.config.MaxConnectionsPerBroker))
@@ -409,7 +409,7 @@ func (dc *DefaultConnector) refreshMetadata(topics []string) {
 func (dc *DefaultConnector) refreshLeaders(response *MetadataResponse) {
 	brokers := make(map[int32]*brokerLink)
 	for _, broker := range response.Brokers {
-		brokers[broker.NodeID] = newBrokerLink(broker, dc.config.KeepAlive, dc.config.KeepAliveTimeout, dc.config.MaxConnectionsPerBroker)
+		brokers[broker.ID] = newBrokerLink(broker, dc.config.KeepAlive, dc.config.KeepAliveTimeout, dc.config.MaxConnectionsPerBroker)
 	}
 
 	if len(brokers) != 0 && len(response.TopicsMetadata) != 0 {
@@ -507,7 +507,7 @@ func (dc *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
 		Infof(dc, "Could not get consumer metadata from all known brokers")
 		return err
 	}
-	dc.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).Coordinator.NodeID
+	dc.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).Coordinator.ID
 
 	return nil
 }
@@ -526,7 +526,7 @@ func (dc *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, err
 
 	var brokerLink *brokerLink
 	for _, link := range dc.links {
-		if link.broker.NodeID == coordinatorID {
+		if link.broker.ID == coordinatorID {
 			brokerLink = link
 			break
 		}
