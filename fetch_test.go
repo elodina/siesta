@@ -46,13 +46,13 @@ func TestFetchRequest(t *testing.T) {
 	testRequest(t, emptyFetchRequest, emptyFetchRequestBytes)
 
 	singleFetchRequest := new(FetchRequest)
-	singleFetchRequest.MaxWaitTime = int32(1000)
+	singleFetchRequest.MaxWait = int32(1000)
 	singleFetchRequest.MinBytes = int32(4)
 	singleFetchRequest.AddFetch("logs", 1, 123456789, 1024)
 	testRequest(t, singleFetchRequest, singleFetchRequestBytes)
 
 	multipleFetchRequest := new(FetchRequest)
-	multipleFetchRequest.MaxWaitTime = int32(2000)
+	multipleFetchRequest.MaxWait = int32(2000)
 	multipleFetchRequest.MinBytes = int32(8)
 	multipleFetchRequest.AddFetch("logs1", 2, 987654321, 2048)
 	multipleFetchRequest.AddFetch("logs1", 0, 11111111111, 4096)
@@ -106,7 +106,7 @@ func TestFetchResponse(t *testing.T) {
 }
 
 func testGoodFetchResponse(t *testing.T, response *FetchResponse) {
-	partitionData, exists := response.Blocks["logs"]
+	partitionData, exists := response.Data["logs"]
 	assertFatal(t, exists, true)
 	data, exists := partitionData[1]
 	assertFatal(t, exists, true)

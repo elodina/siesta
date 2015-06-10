@@ -35,19 +35,19 @@ func TestProduceRequest(t *testing.T) {
 
 	goodProduceRequest := new(ProduceRequest)
 	goodProduceRequest.RequiredAcks = 1
-	goodProduceRequest.Timeout = 2000
-	goodProduceRequest.AddMessage("siesta", 0, &MessageData{Value: []byte("hello world")})
+	goodProduceRequest.AckTimeoutMs = 2000
+	goodProduceRequest.AddMessage("siesta", 0, &Message{Value: []byte("hello world")})
 	testRequest(t, goodProduceRequest, goodProduceRequestBytes)
 }
 
 func TestProduceResponse(t *testing.T) {
 	emptyProduceResponse := new(ProduceResponse)
 	decode(t, emptyProduceResponse, emptyProduceResponseBytes)
-	assert(t, len(emptyProduceResponse.Blocks), 0)
+	assert(t, len(emptyProduceResponse.Status), 0)
 
 	goodProduceResponse := new(ProduceResponse)
 	decode(t, goodProduceResponse, goodProduceResponseBytes)
-	partitionResponse, exists := goodProduceResponse.Blocks["siesta"]
+	partitionResponse, exists := goodProduceResponse.Status["siesta"]
 	assertFatal(t, exists, true)
 	responseData, exists := partitionResponse[0]
 	assertFatal(t, exists, true)

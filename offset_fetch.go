@@ -17,13 +17,13 @@ package siesta
 
 // OffsetFetchRequest is used to fetch offsets for a consumer group and given topic partitions.
 type OffsetFetchRequest struct {
-	ConsumerGroup string
-	Offsets       map[string][]int32
+	GroupID     string
+	RequestInfo map[string][]int32
 }
 
 // NewOffsetFetchRequest creates a new OffsetFetchRequest for a given consumer group.
 func NewOffsetFetchRequest(group string) *OffsetFetchRequest {
-	return &OffsetFetchRequest{ConsumerGroup: group}
+	return &OffsetFetchRequest{GroupID: group}
 }
 
 // Key returns the Kafka API key for OffsetFetchRequest.
@@ -37,10 +37,10 @@ func (ofr *OffsetFetchRequest) Version() int16 {
 }
 
 func (ofr *OffsetFetchRequest) Write(encoder Encoder) {
-	encoder.WriteString(ofr.ConsumerGroup)
-	encoder.WriteInt32(int32(len(ofr.Offsets)))
+	encoder.WriteString(ofr.GroupID)
+	encoder.WriteInt32(int32(len(ofr.RequestInfo)))
 
-	for topic, partitions := range ofr.Offsets {
+	for topic, partitions := range ofr.RequestInfo {
 		encoder.WriteString(topic)
 		encoder.WriteInt32(int32(len(partitions)))
 
@@ -52,16 +52,16 @@ func (ofr *OffsetFetchRequest) Write(encoder Encoder) {
 
 // AddOffset is a convenience method to add a topic partition to this OffsetFetchRequest.
 func (ofr *OffsetFetchRequest) AddOffset(topic string, partition int32) {
-	if ofr.Offsets == nil {
-		ofr.Offsets = make(map[string][]int32)
+	if ofr.RequestInfo == nil {
+		ofr.RequestInfo = make(map[string][]int32)
 	}
 
-	ofr.Offsets[topic] = append(ofr.Offsets[topic], partition)
+	ofr.RequestInfo[topic] = append(ofr.RequestInfo[topic], partition)
 }
 
 // OffsetFetchResponse contains fetched offsets for each requested topic partition.
 type OffsetFetchResponse struct {
-	Offsets map[string]map[int32]*FetchedOffset
+	Offsets map[string]map[int32]*OffsetMetadataAndError
 }
 
 func (ofr *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
@@ -70,14 +70,14 @@ func (ofr *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reasonInvalidOffsetsMapLength)
 	}
 
-	ofr.Offsets = make(map[string]map[int32]*FetchedOffset)
+	ofr.Offsets = make(map[string]map[int32]*OffsetMetadataAndError)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
 			return NewDecodingError(err, reasonInvalidOffsetFetchResponseTopic)
 		}
 
-		offsetsForTopic := make(map[int32]*FetchedOffset)
+		offsetsForTopic := make(map[int32]*OffsetMetadataAndError)
 		ofr.Offsets[topic] = offsetsForTopic
 
 		partitionsLength, err := decoder.GetInt32()
@@ -91,7 +91,7 @@ func (ofr *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
 				return NewDecodingError(err, reasonInvalidOffsetFetchResponsePartition)
 			}
 
-			fetchedOffset := new(FetchedOffset)
+			fetchedOffset := new(OffsetMetadataAndError)
 			if err := fetchedOffset.Read(decoder); err != nil {
 				return err
 			}
@@ -103,14 +103,14 @@ func (ofr *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
 	return nil
 }
 
-// FetchedOffset contains a fetched offset for a topic partition, optional metadata and an error if it occurred.
-type FetchedOffset struct {
+// OffsetMetadataAndError contains a fetched offset for a topic partition, optional metadata and an error if it occurred.
+type OffsetMetadataAndError struct {
 	Offset   int64
 	Metadata string
 	Error    error
 }
 
-func (ofr *FetchedOffset) Read(decoder Decoder) *DecodingError {
+func (ofr *OffsetMetadataAndError) Read(decoder Decoder) *DecodingError {
 	offset, err := decoder.GetInt64()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidOffsetFetchResponseOffset)

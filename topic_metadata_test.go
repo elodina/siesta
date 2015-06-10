@@ -45,63 +45,63 @@ func TestTopicMetadataRequest(t *testing.T) {
 	emptyMetadataRequest := new(TopicMetadataRequest)
 	testRequest(t, emptyMetadataRequest, emptyMetadataRequestBytes)
 
-	asdMetadataRequest := NewTopicMetadataRequest([]string{"asd"})
+	asdMetadataRequest := NewMetadataRequest([]string{"asd"})
 	testRequest(t, asdMetadataRequest, asdMetadataRequestBytes)
 
-	multipleTopicsMetadataRequest := NewTopicMetadataRequest([]string{"asd", "zxc", "qwe"})
+	multipleTopicsMetadataRequest := NewMetadataRequest([]string{"asd", "zxc", "qwe"})
 	testRequest(t, multipleTopicsMetadataRequest, multipleTopicsMetadataRequestBytes)
 }
 
 func TestTopicMetadataResponse(t *testing.T) {
-	emptyMetadataResponse := new(TopicMetadataResponse)
+	emptyMetadataResponse := new(MetadataResponse)
 	decode(t, emptyMetadataResponse, emptyMetadataResponseBytes)
 	assertFatal(t, len(emptyMetadataResponse.Brokers), 0)
-	assertFatal(t, len(emptyMetadataResponse.TopicMetadata), 0)
+	assertFatal(t, len(emptyMetadataResponse.TopicsMetadata), 0)
 
-	brokerMetadataResponse := new(TopicMetadataResponse)
+	brokerMetadataResponse := new(MetadataResponse)
 	decode(t, brokerMetadataResponse, brokerMetadataResponseBytes)
 	assertFatal(t, len(brokerMetadataResponse.Brokers), 1)
 	broker := brokerMetadataResponse.Brokers[0]
 	assert(t, broker.NodeID, int32(0))
 	assert(t, broker.Host, "localhost")
 	assert(t, broker.Port, int32(9092))
-	assertFatal(t, len(brokerMetadataResponse.TopicMetadata), 0)
+	assertFatal(t, len(brokerMetadataResponse.TopicsMetadata), 0)
 
-	topicMetadataResponse := new(TopicMetadataResponse)
+	topicMetadataResponse := new(MetadataResponse)
 	decode(t, topicMetadataResponse, topicMetadataResponseBytes)
 	assertFatal(t, len(topicMetadataResponse.Brokers), 0)
-	assertFatal(t, len(topicMetadataResponse.TopicMetadata), 1)
-	meta := topicMetadataResponse.TopicMetadata[0]
-	assert(t, meta.TopicName, "logs1")
+	assertFatal(t, len(topicMetadataResponse.TopicsMetadata), 1)
+	meta := topicMetadataResponse.TopicsMetadata[0]
+	assert(t, meta.Topic, "logs1")
 	assert(t, meta.Error, ErrNoError)
-	assertFatal(t, len(meta.PartitionMetadata), 2)
-	partition0 := meta.PartitionMetadata[1]
+	assertFatal(t, len(meta.PartitionsMetadata), 2)
+	partition0 := meta.PartitionsMetadata[1]
 	assert(t, partition0.PartitionID, int32(0))
 	assert(t, partition0.Error, ErrNoError)
-	assert(t, partition0.Isr, []int32{0})
+	assert(t, partition0.ISR, []int32{0})
 	assert(t, partition0.Leader, int32(0))
 	assert(t, partition0.Replicas, []int32{0})
 
-	partition1 := meta.PartitionMetadata[0]
+	partition1 := meta.PartitionsMetadata[0]
 	assert(t, partition1.PartitionID, int32(1))
 	assert(t, partition1.Error, ErrNoError)
-	assert(t, partition1.Isr, []int32{0})
+	assert(t, partition1.ISR, []int32{0})
 	assert(t, partition1.Leader, int32(0))
 	assert(t, partition1.Replicas, []int32{0})
 
-	decodeErr(t, new(TopicMetadataResponse), invalidBrokersLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokersLength))
-	decodeErr(t, new(TopicMetadataResponse), invalidMetadataLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidMetadataLength))
-	decodeErr(t, new(TopicMetadataResponse), invalidBrokerNodeIDMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerNodeID))
-	decodeErr(t, new(TopicMetadataResponse), invalidBrokerHostMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerHost))
-	decodeErr(t, new(TopicMetadataResponse), invalidBrokerPortMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerPort))
-	decodeErr(t, new(TopicMetadataResponse), invalidTopicMetadataErrorCodeMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidTopicMetadataErrorCode))
-	decodeErr(t, new(TopicMetadataResponse), invalidTopicMetadataTopicNameMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidTopicMetadataTopicName))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataLength))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataErrorCodeMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataErrorCode))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataPartitionMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataPartition))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataLeaderMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataLeader))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataReplicasLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataReplicasLength))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataReplicaMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataReplica))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataIsrLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataIsrLength))
-	decodeErr(t, new(TopicMetadataResponse), invalidPartitionMetadataIsrMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataIsr))
+	decodeErr(t, new(MetadataResponse), invalidBrokersLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokersLength))
+	decodeErr(t, new(MetadataResponse), invalidMetadataLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidMetadataLength))
+	decodeErr(t, new(MetadataResponse), invalidBrokerNodeIDMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerNodeID))
+	decodeErr(t, new(MetadataResponse), invalidBrokerHostMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerHost))
+	decodeErr(t, new(MetadataResponse), invalidBrokerPortMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBrokerPort))
+	decodeErr(t, new(MetadataResponse), invalidTopicMetadataErrorCodeMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidTopicMetadataErrorCode))
+	decodeErr(t, new(MetadataResponse), invalidTopicMetadataTopicNameMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidTopicMetadataTopicName))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataLength))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataErrorCodeMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataErrorCode))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataPartitionMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataPartition))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataLeaderMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataLeader))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataReplicasLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataReplicasLength))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataReplicaMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataReplica))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataIsrLengthMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataIsrLength))
+	decodeErr(t, new(MetadataResponse), invalidPartitionMetadataIsrMetadataResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionMetadataIsr))
 }

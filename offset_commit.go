@@ -17,13 +17,13 @@ package siesta
 
 // OffsetCommitRequest is used to commit offsets for a group/topic/partition.
 type OffsetCommitRequest struct {
-	ConsumerGroup string
-	Offsets       map[string]map[int32]*OffsetAndMetadata
+	GroupID     string
+	RequestInfo map[string]map[int32]*OffsetAndMetadata
 }
 
 // NewOffsetCommitRequest creates a new OffsetCommitRequest for a given consumer group.
 func NewOffsetCommitRequest(group string) *OffsetCommitRequest {
-	return &OffsetCommitRequest{ConsumerGroup: group}
+	return &OffsetCommitRequest{GroupID: group}
 }
 
 // Key returns the Kafka API key for OffsetCommitRequest.
@@ -37,16 +37,16 @@ func (ocr *OffsetCommitRequest) Version() int16 {
 }
 
 func (ocr *OffsetCommitRequest) Write(encoder Encoder) {
-	encoder.WriteString(ocr.ConsumerGroup)
-	encoder.WriteInt32(int32(len(ocr.Offsets)))
+	encoder.WriteString(ocr.GroupID)
+	encoder.WriteInt32(int32(len(ocr.RequestInfo)))
 
-	for topic, partitionOffsetAndMetadata := range ocr.Offsets {
+	for topic, partitionOffsetAndMetadata := range ocr.RequestInfo {
 		encoder.WriteString(topic)
 		encoder.WriteInt32(int32(len(partitionOffsetAndMetadata)))
 		for partition, offsetAndMetadata := range partitionOffsetAndMetadata {
 			encoder.WriteInt32(partition)
 			encoder.WriteInt64(offsetAndMetadata.Offset)
-			encoder.WriteInt64(offsetAndMetadata.TimeStamp)
+			encoder.WriteInt64(offsetAndMetadata.Timestamp)
 			encoder.WriteString(offsetAndMetadata.Metadata)
 		}
 	}
@@ -54,26 +54,26 @@ func (ocr *OffsetCommitRequest) Write(encoder Encoder) {
 
 // AddOffset is a convenience method to add an offset for a topic partition.
 func (ocr *OffsetCommitRequest) AddOffset(topic string, partition int32, offset int64, timestamp int64, metadata string) {
-	if ocr.Offsets == nil {
-		ocr.Offsets = make(map[string]map[int32]*OffsetAndMetadata)
+	if ocr.RequestInfo == nil {
+		ocr.RequestInfo = make(map[string]map[int32]*OffsetAndMetadata)
 	}
 
-	partitionOffsetAndMetadata, exists := ocr.Offsets[topic]
+	partitionOffsetAndMetadata, exists := ocr.RequestInfo[topic]
 	if !exists {
-		ocr.Offsets[topic] = make(map[int32]*OffsetAndMetadata)
-		partitionOffsetAndMetadata = ocr.Offsets[topic]
+		ocr.RequestInfo[topic] = make(map[int32]*OffsetAndMetadata)
+		partitionOffsetAndMetadata = ocr.RequestInfo[topic]
 	}
 
-	partitionOffsetAndMetadata[partition] = &OffsetAndMetadata{Offset: offset, TimeStamp: timestamp, Metadata: metadata}
+	partitionOffsetAndMetadata[partition] = &OffsetAndMetadata{Offset: offset, Timestamp: timestamp, Metadata: metadata}
 }
 
 // OffsetCommitResponse contains errors for partitions if they occur.
 type OffsetCommitResponse struct {
-	Errors map[string]map[int32]error
+	CommitStatus map[string]map[int32]error
 }
 
 func (ocr *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
-	ocr.Errors = make(map[string]map[int32]error)
+	ocr.CommitStatus = make(map[string]map[int32]error)
 
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
@@ -86,7 +86,7 @@ func (ocr *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
 			return NewDecodingError(err, reasonInvalidOffsetsTopic)
 		}
 		errorsForTopic := make(map[int32]error)
-		ocr.Errors[topic] = errorsForTopic
+		ocr.CommitStatus[topic] = errorsForTopic
 
 		partitionsLength, err := decoder.GetInt32()
 		if err != nil {
@@ -114,7 +114,7 @@ func (ocr *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
 // OffsetAndMetadata contains offset for a partition and optional metadata.
 type OffsetAndMetadata struct {
 	Offset    int64
-	TimeStamp int64
+	Timestamp int64
 	Metadata  string
 }
 

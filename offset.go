@@ -15,6 +15,12 @@ limitations under the License. */
 
 package siesta
 
+// LatestTime is a value used to request for the latest offset (i.e. the offset of the next coming message).
+const LatestTime int64 = -1
+
+// EarliestTime is a value used to request for the earliest available offset.
+const EarliestTime int64 = -2
+
 // OffsetRequest describes the valid offset range available for a set of topic-partitions.
 type OffsetRequest struct {
 	RequestInfo map[string][]*PartitionOffsetRequestInfo
@@ -58,7 +64,7 @@ func (or *OffsetRequest) Write(encoder Encoder) {
 // OffsetResponse contains the starting offset of each segment for the requested partition as well as the "log end offset"
 // i.e. the offset of the next message that would be appended to the given partition.
 type OffsetResponse struct {
-	Offsets map[string]map[int32]*PartitionOffsets
+	PartitionErrorAndOffsets map[string]map[int32]*PartitionOffsetsResponse
 }
 
 func (or *OffsetResponse) Read(decoder Decoder) *DecodingError {
@@ -67,14 +73,14 @@ func (or *OffsetResponse) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reasonInvalidOffsetsLength)
 	}
 
-	or.Offsets = make(map[string]map[int32]*PartitionOffsets)
+	or.PartitionErrorAndOffsets = make(map[string]map[int32]*PartitionOffsetsResponse)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
 			return NewDecodingError(err, reasonInvalidOffsetTopic)
 		}
-		offsetsForTopic := make(map[int32]*PartitionOffsets)
-		or.Offsets[topic] = offsetsForTopic
+		offsetsForTopic := make(map[int32]*PartitionOffsetsResponse)
+		or.PartitionErrorAndOffsets[topic] = offsetsForTopic
 
 		partitionOffsetsLength, err := decoder.GetInt32()
 		if err != nil {
@@ -87,23 +93,17 @@ func (or *OffsetResponse) Read(decoder Decoder) *DecodingError {
 				return NewDecodingError(err, reasonInvalidPartitionOffsetsPartition)
 			}
 
-			partitionOffsets := new(PartitionOffsets)
+			partitionOffsets := new(PartitionOffsetsResponse)
 			decodingErr := partitionOffsets.Read(decoder)
 			if decodingErr != nil {
 				return decodingErr
 			}
-			or.Offsets[topic][partition] = partitionOffsets
+			or.PartitionErrorAndOffsets[topic][partition] = partitionOffsets
 		}
 	}
 
 	return nil
 }
-
-// LatestTime is a value used to request for the latest offset (i.e. the offset of the next coming message).
-const LatestTime int64 = -1
-
-// EarliestTime is a value used to request for the earliest available offset.
-const EarliestTime int64 = -2
 
 // PartitionOffsetRequestInfo contains partition specific configurations to fetch offsets.
 type PartitionOffsetRequestInfo struct {
@@ -112,13 +112,13 @@ type PartitionOffsetRequestInfo struct {
 	MaxNumOffsets int32
 }
 
-// PartitionOffsets contain offsets for a single partition and an error if it occurred.
-type PartitionOffsets struct {
+// PartitionOffsetsResponse contain offsets for a single partition and an error if it occurred.
+type PartitionOffsetsResponse struct {
 	Error   error
 	Offsets []int64
 }
 
-func (po *PartitionOffsets) Read(decoder Decoder) *DecodingError {
+func (po *PartitionOffsetsResponse) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidPartitionOffsetsErrorCode)

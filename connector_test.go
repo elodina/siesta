@@ -66,7 +66,7 @@ func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnect
 	assertFatal(t, err, nil)
 
 	assertNot(t, len(metadata.Brokers), 0)
-	assertNot(t, len(metadata.TopicMetadata), 0)
+	assertNot(t, len(metadata.TopicsMetadata), 0)
 	if len(metadata.Brokers) > 1 {
 		t.Skip("Cluster should consist only of one broker for this test to run.")
 	}
@@ -79,14 +79,14 @@ func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnect
 	}
 	assert(t, broker.Port, int32(9092))
 
-	topicMetadata := findTopicMetadata(t, metadata.TopicMetadata, topicName)
+	topicMetadata := findTopicMetadata(t, metadata.TopicsMetadata, topicName)
 	assert(t, topicMetadata.Error, ErrNoError)
-	assert(t, topicMetadata.TopicName, topicName)
-	assertFatal(t, len(topicMetadata.PartitionMetadata), 1)
+	assert(t, topicMetadata.Topic, topicName)
+	assertFatal(t, len(topicMetadata.PartitionsMetadata), 1)
 
-	partitionMetadata := topicMetadata.PartitionMetadata[0]
+	partitionMetadata := topicMetadata.PartitionsMetadata[0]
 	assert(t, partitionMetadata.Error, ErrNoError)
-	assert(t, partitionMetadata.Isr, []int32{0})
+	assert(t, partitionMetadata.ISR, []int32{0})
 	assert(t, partitionMetadata.Leader, int32(0))
 	assert(t, partitionMetadata.PartitionID, int32(0))
 	assert(t, partitionMetadata.Replicas, []int32{0})
@@ -110,10 +110,10 @@ func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnect
 
 func testProduce(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {
 	produceRequest := new(ProduceRequest)
-	produceRequest.Timeout = 1000
+	produceRequest.AckTimeoutMs = 1000
 	produceRequest.RequiredAcks = 1
 	for i := 0; i < numMessages; i++ {
-		produceRequest.AddMessage(topicName, 0, &MessageData{
+		produceRequest.AddMessage(topicName, 0, &Message{
 			Key:   []byte(fmt.Sprintf("%d", numMessages-i)),
 			Value: []byte(fmt.Sprintf("%d", i)),
 		})
@@ -129,7 +129,7 @@ func testProduce(t *testing.T, topicName string, numMessages int, connector *Def
 	decodingErr := connector.decode(bytes, produceResponse)
 	assertFatal(t, decodingErr, (*DecodingError)(nil))
 
-	topicBlock, exists := produceResponse.Blocks[topicName]
+	topicBlock, exists := produceResponse.Status[topicName]
 	assertFatal(t, exists, true)
 	partitionBlock, exists := topicBlock[int32(0)]
 	assertFatal(t, exists, true)
@@ -156,7 +156,7 @@ func testConsume(t *testing.T, topicName string, numMessages int, connector *Def
 
 func findTopicMetadata(t *testing.T, metadata []*TopicMetadata, topic string) *TopicMetadata {
 	for _, topicMetadata := range metadata {
-		if topicMetadata.TopicName == topic {
+		if topicMetadata.Topic == topic {
 			return topicMetadata
 		}
 	}

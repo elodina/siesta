@@ -40,7 +40,7 @@ func TestOffsetCommitRequest(t *testing.T) {
 func TestOffsetCommitResponse(t *testing.T) {
 	goodOffsetCommitResponse := new(OffsetCommitResponse)
 	decode(t, goodOffsetCommitResponse, goodOffsetCommitResponseBytes)
-	partitionsAndErrors, exists := goodOffsetCommitResponse.Errors["test-2"]
+	partitionsAndErrors, exists := goodOffsetCommitResponse.CommitStatus["test-2"]
 	assertFatal(t, exists, true)
 	err, exists := partitionsAndErrors[0]
 	assertFatal(t, exists, true)
@@ -48,7 +48,7 @@ func TestOffsetCommitResponse(t *testing.T) {
 
 	emptyOffsetCommitResponse := new(OffsetCommitResponse)
 	decode(t, emptyOffsetCommitResponse, emptyOffsetCommitResponseBytes)
-	assert(t, len(emptyOffsetCommitResponse.Errors), 0)
+	assert(t, len(emptyOffsetCommitResponse.CommitStatus), 0)
 
 	decodeErr(t, new(OffsetCommitResponse), invalidLengthOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsMapLength))
 	decodeErr(t, new(OffsetCommitResponse), invalidTopicOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsTopic))

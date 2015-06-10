@@ -43,7 +43,7 @@ const compressionCodecMask int8 = 3
 // MessageAndOffset is a single message or a message set (if it is compressed) with its offset value.
 type MessageAndOffset struct {
 	Offset  int64
-	Message *MessageData
+	Message *Message
 }
 
 func (mo *MessageAndOffset) Read(decoder Decoder) *DecodingError {
@@ -58,7 +58,7 @@ func (mo *MessageAndOffset) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reasonInvalidMessageLength)
 	}
 
-	message := new(MessageData)
+	message := new(Message)
 	decodingErr := message.Read(decoder)
 	if decodingErr != nil {
 		return decodingErr
@@ -93,8 +93,8 @@ func ReadMessageSet(decoder Decoder) ([]*MessageAndOffset, *DecodingError) {
 	return messages, nil
 }
 
-// MessageData contains a single message and its metadata or a nested message set if compression is used.
-type MessageData struct {
+// Message contains a single message and its metadata or a nested message set if compression is used.
+type Message struct {
 	Crc        int32
 	MagicByte  int8
 	Attributes int8
@@ -104,7 +104,7 @@ type MessageData struct {
 	Nested []*MessageAndOffset
 }
 
-func (md *MessageData) Read(decoder Decoder) *DecodingError {
+func (md *Message) Read(decoder Decoder) *DecodingError {
 	crc, err := decoder.GetInt32()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidMessageCRC)
@@ -167,7 +167,7 @@ func (md *MessageData) Read(decoder Decoder) *DecodingError {
 }
 
 //TODO compress and write if needed
-func (md *MessageData) Write(encoder Encoder) {
+func (md *Message) Write(encoder Encoder) {
 	encoder.Reserve(&CrcSlice{})
 	encoder.WriteInt8(md.MagicByte)
 	encoder.WriteInt8(md.Attributes)
@@ -176,8 +176,8 @@ func (md *MessageData) Write(encoder Encoder) {
 	encoder.UpdateReserved()
 }
 
-// Message is a single message and its metadata.
-type Message struct {
+// MessageAndMetadata is a single message and its metadata.
+type MessageAndMetadata struct {
 	Topic     string
 	Partition int32
 	Offset    int64

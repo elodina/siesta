@@ -15,18 +15,18 @@ limitations under the License. */
 
 package siesta
 
-// RequestWriter is used to decouple the message header/metadata writing from the actual message.
+// RequestHeader is used to decouple the message header/metadata writing from the actual message.
 // It is able to accept a request and encode/write it according to Kafka Wire Protocol format
 // adding the correlation id and client id to the request.
-type RequestWriter struct {
+type RequestHeader struct {
 	correlationID int32
 	clientID      string
 	request       Request
 }
 
-// NewRequestWriter creates a new RequestWriter holding the correlation id, client id and the actual request.
-func NewRequestWriter(correlationID int32, clientID string, request Request) *RequestWriter {
-	return &RequestWriter{
+// NewRequestHeader creates a new RequestHeader holding the correlation id, client id and the actual request.
+func NewRequestHeader(correlationID int32, clientID string, request Request) *RequestHeader {
+	return &RequestHeader{
 		correlationID: correlationID,
 		clientID:      clientID,
 		request:       request,
@@ -34,14 +34,14 @@ func NewRequestWriter(correlationID int32, clientID string, request Request) *Re
 }
 
 // Size returns the size in bytes needed to write this request, including the length field. This value will be used when allocating memory for a byte array.
-func (rw *RequestWriter) Size() int32 {
+func (rw *RequestHeader) Size() int32 {
 	encoder := NewSizingEncoder()
 	rw.Write(encoder)
 	return encoder.Size()
 }
 
-// Write writes this RequestWriter into a given Encoder.
-func (rw *RequestWriter) Write(encoder Encoder) {
+// Write writes this RequestHeader into a given Encoder.
+func (rw *RequestHeader) Write(encoder Encoder) {
 	// write the size of request excluding the length field with length 4
 	encoder.WriteInt32(encoder.Size() - 4)
 	encoder.WriteInt16(rw.request.Key())

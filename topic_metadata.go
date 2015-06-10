@@ -22,38 +22,38 @@ type TopicMetadataRequest struct {
 	Topics []string
 }
 
-// NewTopicMetadataRequest creates a new TopicMetadataRequest to fetch metadata for given topics.
+// NewMetadataRequest creates a new MetadataRequest to fetch metadata for given topics.
 // Passing it an empty slice will request metadata for all topics.
-func NewTopicMetadataRequest(topics []string) *TopicMetadataRequest {
+func NewMetadataRequest(topics []string) *TopicMetadataRequest {
 	return &TopicMetadataRequest{
 		Topics: topics,
 	}
 }
 
-func (tmr *TopicMetadataRequest) Write(encoder Encoder) {
-	encoder.WriteInt32(int32(len(tmr.Topics)))
-	for _, topic := range tmr.Topics {
+func (mr *TopicMetadataRequest) Write(encoder Encoder) {
+	encoder.WriteInt32(int32(len(mr.Topics)))
+	for _, topic := range mr.Topics {
 		encoder.WriteString(topic)
 	}
 }
 
 // Key returns the Kafka API key for TopicMetadataRequest.
-func (tmr *TopicMetadataRequest) Key() int16 {
+func (mr *TopicMetadataRequest) Key() int16 {
 	return 3
 }
 
 // Version returns the Kafka request version for backwards compatibility.
-func (tmr *TopicMetadataRequest) Version() int16 {
+func (mr *TopicMetadataRequest) Version() int16 {
 	return 0
 }
 
-// TopicMetadataResponse contains information about brokers in cluster and topics that exist.
-type TopicMetadataResponse struct {
-	Brokers       []*Broker
-	TopicMetadata []*TopicMetadata
+// MetadataResponse contains information about brokers in cluster and topics that exist.
+type MetadataResponse struct {
+	Brokers        []*Broker
+	TopicsMetadata []*TopicMetadata
 }
 
-func (tmr *TopicMetadataResponse) Read(decoder Decoder) *DecodingError {
+func (tmr *MetadataResponse) Read(decoder Decoder) *DecodingError {
 	brokersLength, err := decoder.GetInt32()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidBrokersLength)
@@ -74,14 +74,14 @@ func (tmr *TopicMetadataResponse) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reasonInvalidMetadataLength)
 	}
 
-	tmr.TopicMetadata = make([]*TopicMetadata, metadataLength)
+	tmr.TopicsMetadata = make([]*TopicMetadata, metadataLength)
 	for i := int32(0); i < metadataLength; i++ {
 		topicMetadata := new(TopicMetadata)
 		err := topicMetadata.Read(decoder)
 		if err != nil {
 			return err
 		}
-		tmr.TopicMetadata[i] = topicMetadata
+		tmr.TopicsMetadata[i] = topicMetadata
 	}
 
 	return nil
@@ -94,37 +94,37 @@ type Broker struct {
 	Port   int32
 }
 
-func (b *Broker) String() string {
-	return fmt.Sprintf("%s:%d", b.Host, b.Port)
+func (n *Broker) String() string {
+	return fmt.Sprintf("%s:%d", n.Host, n.Port)
 }
 
-func (b *Broker) Read(decoder Decoder) *DecodingError {
+func (n *Broker) Read(decoder Decoder) *DecodingError {
 	nodeID, err := decoder.GetInt32()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidBrokerNodeID)
 	}
-	b.NodeID = nodeID
+	n.NodeID = nodeID
 
 	host, err := decoder.GetString()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidBrokerHost)
 	}
-	b.Host = host
+	n.Host = host
 
 	port, err := decoder.GetInt32()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidBrokerPort)
 	}
-	b.Port = port
+	n.Port = port
 
 	return nil
 }
 
 // TopicMetadata contains information about topic - its name, number of partitions, leaders, ISRs and errors if they occur.
 type TopicMetadata struct {
-	Error             error
-	TopicName         string
-	PartitionMetadata []*PartitionMetadata
+	Error              error
+	Topic              string
+	PartitionsMetadata []*PartitionMetadata
 }
 
 func (tm *TopicMetadata) Read(decoder Decoder) *DecodingError {
@@ -138,21 +138,21 @@ func (tm *TopicMetadata) Read(decoder Decoder) *DecodingError {
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidTopicMetadataTopicName)
 	}
-	tm.TopicName = topicName
+	tm.Topic = topicName
 
 	metadataLength, err := decoder.GetInt32()
 	if err != nil {
 		return NewDecodingError(err, reasonInvalidPartitionMetadataLength)
 	}
 
-	tm.PartitionMetadata = make([]*PartitionMetadata, metadataLength)
+	tm.PartitionsMetadata = make([]*PartitionMetadata, metadataLength)
 	for i := int32(0); i < metadataLength; i++ {
 		metadata := new(PartitionMetadata)
 		err := metadata.Read(decoder)
 		if err != nil {
 			return err
 		}
-		tm.PartitionMetadata[i] = metadata
+		tm.PartitionsMetadata[i] = metadata
 	}
 
 	return nil
@@ -164,7 +164,7 @@ type PartitionMetadata struct {
 	PartitionID int32
 	Leader      int32
 	Replicas    []int32
-	Isr         []int32
+	ISR         []int32
 }
 
 func (pm *PartitionMetadata) Read(decoder Decoder) *DecodingError {
@@ -205,13 +205,13 @@ func (pm *PartitionMetadata) Read(decoder Decoder) *DecodingError {
 		return NewDecodingError(err, reasonInvalidPartitionMetadataIsrLength)
 	}
 
-	pm.Isr = make([]int32, isrLength)
+	pm.ISR = make([]int32, isrLength)
 	for i := int32(0); i < isrLength; i++ {
 		isr, err := decoder.GetInt32()
 		if err != nil {
 			return NewDecodingError(err, reasonInvalidPartitionMetadataIsr)
 		}
-		pm.Isr[i] = isr
+		pm.ISR[i] = isr
 	}
 
 	return nil

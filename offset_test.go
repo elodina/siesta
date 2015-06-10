@@ -50,12 +50,12 @@ func TestOffsetRequest(t *testing.T) {
 func TestOffsetResponse(t *testing.T) {
 	emptyOffsetResponse := new(OffsetResponse)
 	decode(t, emptyOffsetResponse, emptyOffsetResponseBytes)
-	assertFatal(t, len(emptyOffsetResponse.Offsets), 0)
+	assertFatal(t, len(emptyOffsetResponse.PartitionErrorAndOffsets), 0)
 
 	singleOffsetResponse := new(OffsetResponse)
 	decode(t, singleOffsetResponse, singleOffsetResponseBytes)
-	assertFatal(t, len(singleOffsetResponse.Offsets), 1)
-	offsets, exists := singleOffsetResponse.Offsets["logs"]
+	assertFatal(t, len(singleOffsetResponse.PartitionErrorAndOffsets), 1)
+	offsets, exists := singleOffsetResponse.PartitionErrorAndOffsets["logs"]
 	assertFatal(t, exists, true)
 	assertFatal(t, len(offsets), 1)
 	offset, exists := offsets[2]
@@ -66,8 +66,8 @@ func TestOffsetResponse(t *testing.T) {
 
 	multipleOffsetResponse := new(OffsetResponse)
 	decode(t, multipleOffsetResponse, multipleOffsetResponseBytes)
-	assertFatal(t, len(multipleOffsetResponse.Offsets), 1)
-	offsets, exists = multipleOffsetResponse.Offsets["logs"]
+	assertFatal(t, len(multipleOffsetResponse.PartitionErrorAndOffsets), 1)
+	offsets, exists = multipleOffsetResponse.PartitionErrorAndOffsets["logs"]
 	assertFatal(t, exists, true)
 	assertFatal(t, len(offsets), 2)
 	offset1, exists := offsets[3]
