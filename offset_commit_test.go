@@ -40,19 +40,19 @@ func TestOffsetCommitRequest(t *testing.T) {
 func TestOffsetCommitResponse(t *testing.T) {
 	goodOffsetCommitResponse := new(OffsetCommitResponse)
 	decode(t, goodOffsetCommitResponse, goodOffsetCommitResponseBytes)
-	partitionsAndErrors, exists := goodOffsetCommitResponse.Offsets["test-2"]
+	partitionsAndErrors, exists := goodOffsetCommitResponse.Errors["test-2"]
 	assertFatal(t, exists, true)
 	err, exists := partitionsAndErrors[0]
 	assertFatal(t, exists, true)
-	assert(t, err, NoError)
+	assert(t, err, ErrNoError)
 
 	emptyOffsetCommitResponse := new(OffsetCommitResponse)
 	decode(t, emptyOffsetCommitResponse, emptyOffsetCommitResponseBytes)
-	assert(t, len(emptyOffsetCommitResponse.Offsets), 0)
+	assert(t, len(emptyOffsetCommitResponse.Errors), 0)
 
-	decodeErr(t, new(OffsetCommitResponse), invalidLengthOffsetCommitResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsMapLength))
-	decodeErr(t, new(OffsetCommitResponse), invalidTopicOffsetCommitResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsTopic))
-	decodeErr(t, new(OffsetCommitResponse), invalidPartitionsLengthOffsetCommitResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsPartitionsLength))
-	decodeErr(t, new(OffsetCommitResponse), invalidPartitionOffsetCommitResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsPartition))
-	decodeErr(t, new(OffsetCommitResponse), invalidErrorCodeOffsetCommitResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsErrorCode))
+	decodeErr(t, new(OffsetCommitResponse), invalidLengthOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsMapLength))
+	decodeErr(t, new(OffsetCommitResponse), invalidTopicOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsTopic))
+	decodeErr(t, new(OffsetCommitResponse), invalidPartitionsLengthOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsPartitionsLength))
+	decodeErr(t, new(OffsetCommitResponse), invalidPartitionOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsPartition))
+	decodeErr(t, new(OffsetCommitResponse), invalidErrorCodeOffsetCommitResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsErrorCode))
 }

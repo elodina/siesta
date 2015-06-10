@@ -60,7 +60,7 @@ func TestOffsetResponse(t *testing.T) {
 	assertFatal(t, len(offsets), 1)
 	offset, exists := offsets[2]
 	assertFatal(t, exists, true)
-	assert(t, offset.Error, NoError)
+	assert(t, offset.Error, ErrNoError)
 	assertFatal(t, len(offset.Offsets), 1)
 	assert(t, offset.Offsets[0], int64(172))
 
@@ -72,21 +72,21 @@ func TestOffsetResponse(t *testing.T) {
 	assertFatal(t, len(offsets), 2)
 	offset1, exists := offsets[3]
 	assertFatal(t, exists, true)
-	assert(t, offset1.Error, OffsetOutOfRange)
+	assert(t, offset1.Error, ErrOffsetOutOfRange)
 	assertFatal(t, len(offset1.Offsets), 1)
 	assert(t, offset1.Offsets[0], int64(238))
 
 	offset2, exists := offsets[4]
 	assertFatal(t, exists, true)
-	assert(t, offset2.Error, InvalidMessage)
+	assert(t, offset2.Error, ErrInvalidMessage)
 	assertFatal(t, len(offset2.Offsets), 1)
 	assert(t, offset2.Offsets[0], int64(205))
 
-	decodeErr(t, new(OffsetResponse), invalidTopicsLengthOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsLength))
-	decodeErr(t, new(OffsetResponse), invalidTopicOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetTopic))
-	decodeErr(t, new(OffsetResponse), invalidPartitionsLengthOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidPartitionOffsetsLength))
-	decodeErr(t, new(OffsetResponse), invalidPartitionOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidPartitionOffsetsPartition))
-	decodeErr(t, new(OffsetResponse), invalidErrorCodeOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidPartitionOffsetsErrorCode))
-	decodeErr(t, new(OffsetResponse), invalidOffsetsLengthOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidPartitionOffsetsOffsetsLength))
-	decodeErr(t, new(OffsetResponse), invalidOffsetOffsetResponseBytes, NewDecodingError(EOF, reason_InvalidPartitionOffset))
+	decodeErr(t, new(OffsetResponse), invalidTopicsLengthOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsLength))
+	decodeErr(t, new(OffsetResponse), invalidTopicOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetTopic))
+	decodeErr(t, new(OffsetResponse), invalidPartitionsLengthOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionOffsetsLength))
+	decodeErr(t, new(OffsetResponse), invalidPartitionOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionOffsetsPartition))
+	decodeErr(t, new(OffsetResponse), invalidErrorCodeOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionOffsetsErrorCode))
+	decodeErr(t, new(OffsetResponse), invalidOffsetsLengthOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionOffsetsOffsetsLength))
+	decodeErr(t, new(OffsetResponse), invalidOffsetOffsetResponseBytes, NewDecodingError(ErrEOF, reasonInvalidPartitionOffset))
 }

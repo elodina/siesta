@@ -15,32 +15,36 @@ limitations under the License. */
 
 package siesta
 
+// OffsetRequest describes the valid offset range available for a set of topic-partitions.
 type OffsetRequest struct {
 	RequestInfo map[string][]*PartitionOffsetRequestInfo
 }
 
-func (this *OffsetRequest) Key() int16 {
+// Key returns the Kafka API key for OffsetRequest.
+func (or *OffsetRequest) Key() int16 {
 	return 2
 }
 
-func (this *OffsetRequest) Version() int16 {
+// Version returns the Kafka request version for backwards compatibility.
+func (or *OffsetRequest) Version() int16 {
 	return 0
 }
 
-func (this *OffsetRequest) AddPartitionOffsetRequestInfo(topic string, partition int32, time OffsetTime, maxNumOffsets int32) {
-	if this.RequestInfo == nil {
-		this.RequestInfo = make(map[string][]*PartitionOffsetRequestInfo)
+// AddPartitionOffsetRequestInfo is a convenience method to add a PartitionOffsetRequestInfo to this request.
+func (or *OffsetRequest) AddPartitionOffsetRequestInfo(topic string, partition int32, time int64, maxNumOffsets int32) {
+	if or.RequestInfo == nil {
+		or.RequestInfo = make(map[string][]*PartitionOffsetRequestInfo)
 	}
 
-	this.RequestInfo[topic] = append(this.RequestInfo[topic], &PartitionOffsetRequestInfo{Partition: partition, Time: time, MaxNumOffsets: maxNumOffsets})
+	or.RequestInfo[topic] = append(or.RequestInfo[topic], &PartitionOffsetRequestInfo{Partition: partition, Time: time, MaxNumOffsets: maxNumOffsets})
 }
 
-func (this *OffsetRequest) Write(encoder Encoder) {
+func (or *OffsetRequest) Write(encoder Encoder) {
 	//Normal client consumers should always specify ReplicaId as -1 as they have no node id
 	encoder.WriteInt32(-1)
-	encoder.WriteInt32(int32(len(this.RequestInfo)))
+	encoder.WriteInt32(int32(len(or.RequestInfo)))
 
-	for topic, partitionOffsetInfos := range this.RequestInfo {
+	for topic, partitionOffsetInfos := range or.RequestInfo {
 		encoder.WriteString(topic)
 		encoder.WriteInt32(int32(len(partitionOffsetInfos)))
 		for _, info := range partitionOffsetInfos {
@@ -51,34 +55,36 @@ func (this *OffsetRequest) Write(encoder Encoder) {
 	}
 }
 
+// OffsetResponse contains the starting offset of each segment for the requested partition as well as the "log end offset"
+// i.e. the offset of the next message that would be appended to the given partition.
 type OffsetResponse struct {
 	Offsets map[string]map[int32]*PartitionOffsets
 }
 
-func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
+func (or *OffsetResponse) Read(decoder Decoder) *DecodingError {
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetsLength)
+		return NewDecodingError(err, reasonInvalidOffsetsLength)
 	}
 
-	this.Offsets = make(map[string]map[int32]*PartitionOffsets)
+	or.Offsets = make(map[string]map[int32]*PartitionOffsets)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidOffsetTopic)
+			return NewDecodingError(err, reasonInvalidOffsetTopic)
 		}
 		offsetsForTopic := make(map[int32]*PartitionOffsets)
-		this.Offsets[topic] = offsetsForTopic
+		or.Offsets[topic] = offsetsForTopic
 
 		partitionOffsetsLength, err := decoder.GetInt32()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidPartitionOffsetsLength)
+			return NewDecodingError(err, reasonInvalidPartitionOffsetsLength)
 		}
 
 		for j := int32(0); j < partitionOffsetsLength; j++ {
 			partition, err := decoder.GetInt32()
 			if err != nil {
-				return NewDecodingError(err, reason_InvalidPartitionOffsetsPartition)
+				return NewDecodingError(err, reasonInvalidPartitionOffsetsPartition)
 			}
 
 			partitionOffsets := new(PartitionOffsets)
@@ -86,58 +92,61 @@ func (this *OffsetResponse) Read(decoder Decoder) *DecodingError {
 			if decodingErr != nil {
 				return decodingErr
 			}
-			this.Offsets[topic][partition] = partitionOffsets
+			or.Offsets[topic][partition] = partitionOffsets
 		}
 	}
 
 	return nil
 }
 
-type OffsetTime int64
+// LatestTime is a value used to request for the latest offset (i.e. the offset of the next coming message).
+const LatestTime int64 = -1
 
-const LatestTime OffsetTime = -1
-const EarliestTime OffsetTime = -2
+// EarliestTime is a value used to request for the earliest available offset.
+const EarliestTime int64 = -2
 
+// PartitionOffsetRequestInfo contains partition specific configurations to fetch offsets.
 type PartitionOffsetRequestInfo struct {
 	Partition     int32
-	Time          OffsetTime
+	Time          int64
 	MaxNumOffsets int32
 }
 
+// PartitionOffsets contain offsets for a single partition and an error if it occurred.
 type PartitionOffsets struct {
 	Error   error
 	Offsets []int64
 }
 
-func (this *PartitionOffsets) Read(decoder Decoder) *DecodingError {
+func (po *PartitionOffsets) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidPartitionOffsetsErrorCode)
+		return NewDecodingError(err, reasonInvalidPartitionOffsetsErrorCode)
 	}
-	this.Error = BrokerErrors[errCode]
+	po.Error = BrokerErrors[errCode]
 
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidPartitionOffsetsOffsetsLength)
+		return NewDecodingError(err, reasonInvalidPartitionOffsetsOffsetsLength)
 	}
-	this.Offsets = make([]int64, offsetsLength)
+	po.Offsets = make([]int64, offsetsLength)
 	for i := int32(0); i < offsetsLength; i++ {
 		offset, err := decoder.GetInt64()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidPartitionOffset)
+			return NewDecodingError(err, reasonInvalidPartitionOffset)
 		}
-		this.Offsets[i] = offset
+		po.Offsets[i] = offset
 	}
 
 	return nil
 }
 
 var (
-	reason_InvalidOffsetsLength                 = "Invalid length for Offsets field"
-	reason_InvalidOffsetTopic                   = "Invalid topic in offset map"
-	reason_InvalidPartitionOffsetsLength        = "Invalid length for partition offsets field"
-	reason_InvalidPartitionOffsetsPartition     = "Invalid partition in partition offset"
-	reason_InvalidPartitionOffsetsErrorCode     = "Invalid error code in partition offset"
-	reason_InvalidPartitionOffsetsOffsetsLength = "Invalid length for offsets field in partition offset"
-	reason_InvalidPartitionOffset               = "Invalid offset in partition offset"
+	reasonInvalidOffsetsLength                 = "Invalid length for Offsets field"
+	reasonInvalidOffsetTopic                   = "Invalid topic in offset map"
+	reasonInvalidPartitionOffsetsLength        = "Invalid length for partition offsets field"
+	reasonInvalidPartitionOffsetsPartition     = "Invalid partition in partition offset"
+	reasonInvalidPartitionOffsetsErrorCode     = "Invalid error code in partition offset"
+	reasonInvalidPartitionOffsetsOffsetsLength = "Invalid length for offsets field in partition offset"
+	reasonInvalidPartitionOffset               = "Invalid offset in partition offset"
 )

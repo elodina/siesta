@@ -43,7 +43,7 @@ func TestInt8EncodingDecoding(t *testing.T) {
 	bytes := []byte{}
 	decoder = NewBinaryDecoder(bytes)
 	_, err := decoder.GetInt8()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestInt16EncodingDecoding(t *testing.T) {
@@ -67,7 +67,7 @@ func TestInt16EncodingDecoding(t *testing.T) {
 	bytes := []byte{0x00}
 	decoder = NewBinaryDecoder(bytes)
 	_, err := decoder.GetInt16()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestInt32EncodingDecoding(t *testing.T) {
@@ -91,7 +91,7 @@ func TestInt32EncodingDecoding(t *testing.T) {
 	bytes := []byte{0x00, 0x00, 0x00}
 	decoder = NewBinaryDecoder(bytes)
 	_, err := decoder.GetInt32()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestInt64EncodingDecoding(t *testing.T) {
@@ -115,7 +115,7 @@ func TestInt64EncodingDecoding(t *testing.T) {
 	bytes := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	decoder = NewBinaryDecoder(bytes)
 	_, err := decoder.GetInt64()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestStringEncodingDecoding(t *testing.T) {
@@ -139,12 +139,12 @@ func TestStringEncodingDecoding(t *testing.T) {
 	bytesNegativeLength := []byte{0xFF, 0xFE}
 	decoder = NewBinaryDecoder(bytesNegativeLength)
 	_, err := decoder.GetString()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 
 	bytesInsufficientData := []byte{0x00, 0x03, 0x6C}
 	decoder = NewBinaryDecoder(bytesInsufficientData)
 	_, err = decoder.GetString()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestBytesEncodingDecoding(t *testing.T) {
@@ -174,12 +174,12 @@ func TestBytesEncodingDecoding(t *testing.T) {
 	bytesNegativeLength := []byte{0xFF, 0xFF, 0xFF, 0xFE}
 	decoder = NewBinaryDecoder(bytesNegativeLength)
 	_, err = decoder.GetBytes()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 
 	bytesInsufficientData := []byte{0x00, 0x00, 0x00, 0x03, 0x6C}
 	decoder = NewBinaryDecoder(bytesInsufficientData)
 	_, err = decoder.GetBytes()
-	assert(t, err, EOF)
+	assert(t, err, ErrEOF)
 }
 
 func TestEncoderSize(t *testing.T) {

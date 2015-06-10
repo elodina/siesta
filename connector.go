@@ -30,6 +30,7 @@ import (
 	"time"
 )
 
+// InvalidOffset is a constant that is used to denote an invalid or uninitialized offset.
 const InvalidOffset int64 = -1
 
 // Connector is an interface that should provide ways to clearly interact with Kafka cluster and hide all broker management stuff from user.
@@ -40,7 +41,7 @@ type Connector interface {
 
 	// GetAvailableOffset issues an offset request to a specified topic and partition with a given offset time.
 	// More on offset time here - https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-OffsetRequest
-	GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error)
+	GetAvailableOffset(topic string, partition int32, offsetTime int64) (int64, error)
 
 	// Fetch issues a single fetch request to a broker responsible for a given topic and partition and returns a FetchResponse that contains messages starting from a given offset.
 	Fetch(topic string, partition int32, offset int64) (*FetchResponse, error)
@@ -109,11 +110,11 @@ type ConnectorConfig struct {
 	// Backoff value between consumer metadata requests.
 	ConsumerMetadataBackoff time.Duration
 
-	// Client id that will be used by a connector to identify client requests by broker.
-	ClientId string
+	// ClientID that will be used by a connector to identify client requests by broker.
+	ClientID string
 }
 
-// Returns a new ConnectorConfig with sane defaults.
+// NewConnectorConfig returns a new ConnectorConfig with sane defaults.
 func NewConnectorConfig() *ConnectorConfig {
 	return &ConnectorConfig{
 		ReadTimeout:             5 * time.Second,
@@ -131,80 +132,80 @@ func NewConnectorConfig() *ConnectorConfig {
 		CommitOffsetBackoff:     200 * time.Millisecond,
 		ConsumerMetadataRetries: 15,
 		ConsumerMetadataBackoff: 500 * time.Millisecond,
-		ClientId:                "siesta",
+		ClientID:                "siesta",
 	}
 }
 
-//Validates this ConnectorConfig. Returns a corresponding error if the ConnectorConfig is invalid and nil otherwise.
-func (this *ConnectorConfig) Validate() error {
-	if this == nil {
+// Validate validates this ConnectorConfig. Returns a corresponding error if the ConnectorConfig is invalid and nil otherwise.
+func (cc *ConnectorConfig) Validate() error {
+	if cc == nil {
 		return errors.New("Please provide a ConnectorConfig.")
 	}
 
-	if len(this.BrokerList) == 0 {
+	if len(cc.BrokerList) == 0 {
 		return errors.New("BrokerList must have at least one broker.")
 	}
 
-	if this.ReadTimeout < time.Millisecond {
+	if cc.ReadTimeout < time.Millisecond {
 		return errors.New("ReadTimeout must be at least 1ms.")
 	}
 
-	if this.WriteTimeout < time.Millisecond {
+	if cc.WriteTimeout < time.Millisecond {
 		return errors.New("WriteTimeout must be at least 1ms.")
 	}
 
-	if this.ConnectTimeout < time.Millisecond {
+	if cc.ConnectTimeout < time.Millisecond {
 		return errors.New("ConnectTimeout must be at least 1ms.")
 	}
 
-	if this.KeepAliveTimeout < time.Millisecond {
+	if cc.KeepAliveTimeout < time.Millisecond {
 		return errors.New("KeepAliveTimeout must be at least 1ms.")
 	}
 
-	if this.MaxConnections < 1 {
+	if cc.MaxConnections < 1 {
 		return errors.New("MaxConnections cannot be less than 1.")
 	}
 
-	if this.MaxConnectionsPerBroker < 1 {
+	if cc.MaxConnectionsPerBroker < 1 {
 		return errors.New("MaxConnectionsPerBroker cannot be less than 1.")
 	}
 
-	if this.FetchSize < 1 {
+	if cc.FetchSize < 1 {
 		return errors.New("FetchSize cannot be less than 1.")
 	}
 
-	if this.MetadataRetries < 0 {
+	if cc.MetadataRetries < 0 {
 		return errors.New("MetadataRetries cannot be less than 0.")
 	}
 
-	if this.MetadataBackoff < time.Millisecond {
+	if cc.MetadataBackoff < time.Millisecond {
 		return errors.New("MetadataBackoff must be at least 1ms.")
 	}
 
-	if this.CommitOffsetRetries < 0 {
+	if cc.CommitOffsetRetries < 0 {
 		return errors.New("CommitOffsetRetries cannot be less than 0.")
 	}
 
-	if this.CommitOffsetBackoff < time.Millisecond {
+	if cc.CommitOffsetBackoff < time.Millisecond {
 		return errors.New("CommitOffsetBackoff must be at least 1ms.")
 	}
 
-	if this.ConsumerMetadataRetries < 0 {
+	if cc.ConsumerMetadataRetries < 0 {
 		return errors.New("ConsumerMetadataRetries cannot be less than 0.")
 	}
 
-	if this.ConsumerMetadataBackoff < time.Millisecond {
+	if cc.ConsumerMetadataBackoff < time.Millisecond {
 		return errors.New("ConsumerMetadataBackoff must be at least 1ms.")
 	}
 
-	if this.ClientId == "" {
+	if cc.ClientID == "" {
 		return errors.New("ClientId cannot be empty.")
 	}
 
 	return nil
 }
 
-// A default (and only one for now) Connector implementation for Siesta library.
+// DefaultConnector is a default (and only one for now) Connector implementation for Siesta library.
 type DefaultConnector struct {
 	config         ConnectorConfig
 	leaders        map[string]map[int32]*brokerLink
@@ -216,7 +217,7 @@ type DefaultConnector struct {
 	offsetCoordinators map[string]int32
 }
 
-// Creates a new DefaultConnector with a given ConnectorConfig. May return an error if the passed config is invalid.
+// NewDefaultConnector creates a new DefaultConnector with a given ConnectorConfig. May return an error if the passed config is invalid.
 func NewDefaultConnector(config *ConnectorConfig) (*DefaultConnector, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -233,42 +234,42 @@ func NewDefaultConnector(config *ConnectorConfig) (*DefaultConnector, error) {
 }
 
 // Returns a string representation of this DefaultConnector.
-func (this *DefaultConnector) String() string {
+func (dc *DefaultConnector) String() string {
 	return "Default Connector"
 }
 
 // GetTopicMetadata is primarily used to discover leaders for given topics and how many partitions these topics have.
 // Passing it an empty topic list will retrieve metadata for all topics in a cluster.
-func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
-	for i := 0; i <= this.config.MetadataRetries; i++ {
-		if metadata, err := this.getMetadata(topics); err == nil {
+func (dc *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataResponse, error) {
+	for i := 0; i <= dc.config.MetadataRetries; i++ {
+		if metadata, err := dc.getMetadata(topics); err == nil {
 			return metadata, nil
 		}
 
-		Debugf(this, "GetTopicMetadata for %s failed after %d try", topics, i)
-		time.Sleep(this.config.MetadataBackoff)
+		Debugf(dc, "GetTopicMetadata for %s failed after %d try", topics, i)
+		time.Sleep(dc.config.MetadataBackoff)
 	}
 
-	return nil, errors.New(fmt.Sprintf("Could not get topic metadata for %s after %d retries", topics, this.config.MetadataRetries))
+	return nil, fmt.Errorf("Could not get topic metadata for %s after %d retries", topics, dc.config.MetadataRetries)
 }
 
 // GetAvailableOffset issues an offset request to a specified topic and partition with a given offset time.
-func (this *DefaultConnector) GetAvailableOffset(topic string, partition int32, offsetTime OffsetTime) (int64, error) {
+func (dc *DefaultConnector) GetAvailableOffset(topic string, partition int32, offsetTime int64) (int64, error) {
 	request := new(OffsetRequest)
 	request.AddPartitionOffsetRequestInfo(topic, partition, offsetTime, 1)
-	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.offsetValidator)
+	response, err := dc.sendToAllAndReturnFirstSuccessful(request, dc.offsetValidator)
 	if response != nil {
 		return response.(*OffsetResponse).Offsets[topic][partition].Offsets[0], err
-	} else {
-		return -1, err
 	}
+
+	return -1, err
 }
 
 // Fetch issues a single fetch request to a broker responsible for a given topic and partition and returns a FetchResponse that contains messages starting from a given offset.
-func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64) (*FetchResponse, error) {
-	link := this.getLeader(topic, partition)
+func (dc *DefaultConnector) Fetch(topic string, partition int32, offset int64) (*FetchResponse, error) {
+	link := dc.getLeader(topic, partition)
 	if link == nil {
-		leader, err := this.tryGetLeader(topic, partition, this.config.MetadataRetries)
+		leader, err := dc.tryGetLeader(topic, partition, dc.config.MetadataRetries)
 		if err != nil {
 			return nil, err
 		}
@@ -276,12 +277,12 @@ func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64)
 	}
 
 	request := new(FetchRequest)
-	request.MinBytes = this.config.FetchMinBytes
-	request.MaxWaitTime = this.config.FetchMaxWaitTime
-	request.AddFetch(topic, partition, offset, this.config.FetchSize)
-	bytes, err := this.syncSendAndReceive(link, request)
+	request.MinBytes = dc.config.FetchMinBytes
+	request.MaxWaitTime = dc.config.FetchMaxWaitTime
+	request.AddFetch(topic, partition, offset, dc.config.FetchSize)
+	bytes, err := dc.syncSendAndReceive(link, request)
 	if err != nil {
-		this.removeLeader(topic, partition)
+		dc.removeLeader(topic, partition)
 		return nil, err
 	}
 
@@ -289,8 +290,8 @@ func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64)
 	response := new(FetchResponse)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
-		this.removeLeader(topic, partition)
-		Errorf(this, "Could not decode a FetchResponse. Reason: %s", decodingErr.Reason())
+		dc.removeLeader(topic, partition)
+		Errorf(dc, "Could not decode a FetchResponse. Reason: %s", decodingErr.Reason())
 		return nil, decodingErr.Error()
 	}
 
@@ -298,50 +299,51 @@ func (this *DefaultConnector) Fetch(topic string, partition int32, offset int64)
 }
 
 // GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
-func (this *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
-	coordinator, err := this.getOffsetCoordinator(group)
+func (dc *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
+	coordinator, err := dc.getOffsetCoordinator(group)
 	if err != nil {
 		return InvalidOffset, err
 	}
 
 	request := NewOffsetFetchRequest(group)
 	request.AddOffset(topic, partition)
-	bytes, err := this.syncSendAndReceive(coordinator, request)
+	bytes, err := dc.syncSendAndReceive(coordinator, request)
 	if err != nil {
 		return InvalidOffset, err
 	}
 	response := new(OffsetFetchResponse)
-	decodingErr := this.decode(bytes, response)
+	decodingErr := dc.decode(bytes, response)
 	if decodingErr != nil {
-		Errorf(this, "Could not decode an OffsetFetchResponse. Reason: %s", decodingErr.Reason())
+		Errorf(dc, "Could not decode an OffsetFetchResponse. Reason: %s", decodingErr.Reason())
 		return InvalidOffset, decodingErr.Error()
 	}
 
-	if topicOffsets, exist := response.Offsets[topic]; !exist {
+	topicOffsets, exist := response.Offsets[topic]
+	if !exist {
 		return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested topic")
+	}
+
+	if offset, exists := topicOffsets[partition]; !exists {
+		return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested partition")
+	} else if offset.Error != ErrNoError {
+		return InvalidOffset, offset.Error
 	} else {
-		if offset, exists := topicOffsets[partition]; !exists {
-			return InvalidOffset, fmt.Errorf("OffsetFetchResponse does not contain information about requested partition")
-		} else if offset.Error != NoError {
-			return InvalidOffset, offset.Error
-		} else {
-			return offset.Offset, nil
-		}
+		return offset.Offset, nil
 	}
 }
 
 // CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
-func (this *DefaultConnector) CommitOffset(group string, topic string, partition int32, offset int64) error {
-	for i := 0; i <= this.config.CommitOffsetRetries; i++ {
-		if err := this.tryCommitOffset(group, topic, partition, offset); err == nil {
+func (dc *DefaultConnector) CommitOffset(group string, topic string, partition int32, offset int64) error {
+	for i := 0; i <= dc.config.CommitOffsetRetries; i++ {
+		if err := dc.tryCommitOffset(group, topic, partition, offset); err == nil {
 			return nil
 		}
 
-		Debugf(this, "Failed to commit offset %d for group %s, topic %s, partition %d after %d try", offset, group, topic, partition, i)
-		time.Sleep(this.config.CommitOffsetBackoff)
+		Debugf(dc, "Failed to commit offset %d for group %s, topic %s, partition %d after %d try", offset, group, topic, partition, i)
+		time.Sleep(dc.config.CommitOffsetBackoff)
 	}
 
-	return errors.New(fmt.Sprintf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, this.config.CommitOffsetRetries))
+	return fmt.Errorf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, dc.config.CommitOffsetRetries)
 }
 
 //func (this *DefaultConnector) Produce(message Message) error {
@@ -349,33 +351,33 @@ func (this *DefaultConnector) CommitOffset(group string, topic string, partition
 //	panic("Not implemented yet")
 //}
 
-// Tells the Connector to close all existing connections and stop.
+// Close tells the Connector to close all existing connections and stop.
 // This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
-func (this *DefaultConnector) Close() <-chan bool {
+func (dc *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
-		this.closeBrokerLinks()
-		for _, link := range this.bootstrapLinks {
+		dc.closeBrokerLinks()
+		for _, link := range dc.bootstrapLinks {
 			link.stop <- true
 		}
-		this.bootstrapLinks = nil
-		this.links = nil
+		dc.bootstrapLinks = nil
+		dc.links = nil
 		closed <- true
 	}()
 
 	return closed
 }
 
-func (this *DefaultConnector) closeBrokerLinks() {
-	for _, link := range this.links {
+func (dc *DefaultConnector) closeBrokerLinks() {
+	for _, link := range dc.links {
 		link.stop <- true
 	}
 }
 
-func (this *DefaultConnector) refreshMetadata(topics []string) {
-	if len(this.bootstrapLinks) == 0 {
-		for i := 0; i < len(this.config.BrokerList); i++ {
-			broker := this.config.BrokerList[i]
+func (dc *DefaultConnector) refreshMetadata(topics []string) {
+	if len(dc.bootstrapLinks) == 0 {
+		for i := 0; i < len(dc.config.BrokerList); i++ {
+			broker := dc.config.BrokerList[i]
 			hostPort := strings.Split(broker, ":")
 			if len(hostPort) != 2 {
 				panic(fmt.Sprintf("incorrect broker connection string: %s", broker))
@@ -386,70 +388,70 @@ func (this *DefaultConnector) refreshMetadata(topics []string) {
 				panic(fmt.Sprintf("incorrect port in broker connection string: %s", broker))
 			}
 
-			this.bootstrapLinks = append(this.bootstrapLinks, newBrokerLink(&Broker{NodeId: -1, Host: hostPort[0], Port: int32(port)},
-				this.config.KeepAlive,
-				this.config.KeepAliveTimeout,
-				this.config.MaxConnectionsPerBroker))
+			dc.bootstrapLinks = append(dc.bootstrapLinks, newBrokerLink(&Broker{NodeID: -1, Host: hostPort[0], Port: int32(port)},
+				dc.config.KeepAlive,
+				dc.config.KeepAliveTimeout,
+				dc.config.MaxConnectionsPerBroker))
 		}
 	}
 
-	response, err := this.sendToAllLinks(this.links, NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics))
+	response, err := dc.sendToAllLinks(dc.links, NewTopicMetadataRequest(topics), dc.topicMetadataValidator(topics))
 	if err != nil {
-		Warnf(this, "Could not get topic metadata from all known brokers, trying bootstrap brokers...")
-		if response, err = this.sendToAllLinks(this.bootstrapLinks, NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics)); err != nil {
-			Errorf(this, "Could not get topic metadata from all known brokers")
+		Warnf(dc, "Could not get topic metadata from all known brokers, trying bootstrap brokers...")
+		if response, err = dc.sendToAllLinks(dc.bootstrapLinks, NewTopicMetadataRequest(topics), dc.topicMetadataValidator(topics)); err != nil {
+			Errorf(dc, "Could not get topic metadata from all known brokers")
 			return
 		}
 	}
-	this.refreshLeaders(response.(*TopicMetadataResponse))
+	dc.refreshLeaders(response.(*TopicMetadataResponse))
 }
 
-func (this *DefaultConnector) refreshLeaders(response *TopicMetadataResponse) {
+func (dc *DefaultConnector) refreshLeaders(response *TopicMetadataResponse) {
 	brokers := make(map[int32]*brokerLink)
 	for _, broker := range response.Brokers {
-		brokers[broker.NodeId] = newBrokerLink(broker, this.config.KeepAlive, this.config.KeepAliveTimeout, this.config.MaxConnectionsPerBroker)
+		brokers[broker.NodeID] = newBrokerLink(broker, dc.config.KeepAlive, dc.config.KeepAliveTimeout, dc.config.MaxConnectionsPerBroker)
 	}
 
 	if len(brokers) != 0 && len(response.TopicMetadata) != 0 {
-		this.closeBrokerLinks()
-		this.links = make([]*brokerLink, 0)
+		dc.closeBrokerLinks()
+		dc.links = make([]*brokerLink, 0)
 	}
 
 	for _, metadata := range response.TopicMetadata {
 		for _, partitionMetadata := range metadata.PartitionMetadata {
 			if leader, exists := brokers[partitionMetadata.Leader]; exists {
-				this.putLeader(metadata.TopicName, partitionMetadata.PartitionId, leader)
+				dc.putLeader(metadata.TopicName, partitionMetadata.PartitionID, leader)
 			} else {
-				Warnf(this, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.TopicName, partitionMetadata.PartitionId)
+				Warnf(dc, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.TopicName, partitionMetadata.PartitionID)
 				//TODO: warn about incomplete broker list
 			}
 		}
 	}
 }
 
-func (this *DefaultConnector) getMetadata(topics []string) (*TopicMetadataResponse, error) {
-	response, err := this.sendToAllAndReturnFirstSuccessful(NewTopicMetadataRequest(topics), this.topicMetadataValidator(topics))
+func (dc *DefaultConnector) getMetadata(topics []string) (*TopicMetadataResponse, error) {
+	response, err := dc.sendToAllAndReturnFirstSuccessful(NewTopicMetadataRequest(topics), dc.topicMetadataValidator(topics))
 	if response != nil {
 		return response.(*TopicMetadataResponse), err
-	} else {
-		return nil, err
 	}
+
+	return nil, err
 }
 
-func (this *DefaultConnector) tryGetLeader(topic string, partition int32, retries int) (*brokerLink, error) {
+func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries int) (*brokerLink, error) {
 	for i := 0; i <= retries; i++ {
-		this.refreshMetadata([]string{topic})
-		if link := this.getLeader(topic, partition); link != nil {
+		dc.refreshMetadata([]string{topic})
+		if link := dc.getLeader(topic, partition); link != nil {
 			return link, nil
 		}
-		time.Sleep(this.config.MetadataBackoff)
+		time.Sleep(dc.config.MetadataBackoff)
 	}
 
-	return nil, errors.New(fmt.Sprintf("Could not get leader for %s:%d after %d retries", topic, partition, retries))
+	return nil, fmt.Errorf("Could not get leader for %s:%d after %d retries", topic, partition, retries)
 }
 
-func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
-	leadersForTopic, exists := this.leaders[topic]
+func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
+	leadersForTopic, exists := dc.leaders[topic]
 	if !exists {
 		return nil
 	}
@@ -457,14 +459,14 @@ func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLi
 	return leadersForTopic[partition]
 }
 
-func (this *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
-	Tracef(this, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
-	if _, exists := this.leaders[topic]; !exists {
-		this.leaders[topic] = make(map[int32]*brokerLink)
+func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
+	Tracef(dc, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
+	if _, exists := dc.leaders[topic]; !exists {
+		dc.leaders[topic] = make(map[int32]*brokerLink)
 	}
 
 	exists := false
-	for _, link := range this.links {
+	for _, link := range dc.links {
 		if *link.broker == *leader.broker {
 			exists = true
 			break
@@ -472,73 +474,73 @@ func (this *DefaultConnector) putLeader(topic string, partition int32, leader *b
 	}
 
 	if !exists {
-		this.links = append(this.links, leader)
+		dc.links = append(dc.links, leader)
 	}
 
-	this.leaders[topic][partition] = leader
+	dc.leaders[topic][partition] = leader
 }
 
-func (this *DefaultConnector) removeLeader(topic string, partition int32) {
-	if leadersForTopic, exists := this.leaders[topic]; exists {
+func (dc *DefaultConnector) removeLeader(topic string, partition int32) {
+	if leadersForTopic, exists := dc.leaders[topic]; exists {
 		delete(leadersForTopic, partition)
 	}
 }
 
-func (this *DefaultConnector) refreshOffsetCoordinator(group string) error {
-	for i := 0; i <= this.config.ConsumerMetadataRetries; i++ {
-		if err := this.tryRefreshOffsetCoordinator(group); err == nil {
+func (dc *DefaultConnector) refreshOffsetCoordinator(group string) error {
+	for i := 0; i <= dc.config.ConsumerMetadataRetries; i++ {
+		if err := dc.tryRefreshOffsetCoordinator(group); err == nil {
 			return nil
 		}
 
-		Debugf(this, "Failed to get consumer coordinator for group %s after %d try", group, i)
-		time.Sleep(this.config.ConsumerMetadataBackoff)
+		Debugf(dc, "Failed to get consumer coordinator for group %s after %d try", group, i)
+		time.Sleep(dc.config.ConsumerMetadataBackoff)
 	}
 
-	return fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, this.config.ConsumerMetadataRetries)
+	return fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, dc.config.ConsumerMetadataRetries)
 }
 
-func (this *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
+func (dc *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
 	request := NewConsumerMetadataRequest(group)
 
-	response, err := this.sendToAllAndReturnFirstSuccessful(request, this.consumerMetadataValidator)
+	response, err := dc.sendToAllAndReturnFirstSuccessful(request, dc.consumerMetadataValidator)
 	if err != nil {
-		Infof(this, "Could not get consumer metadata from all known brokers")
+		Infof(dc, "Could not get consumer metadata from all known brokers")
 		return err
 	}
-	this.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).CoordinatorId
+	dc.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).CoordinatorID
 
 	return nil
 }
 
-func (this *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, error) {
-	coordinatorId, exists := this.offsetCoordinators[group]
+func (dc *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, error) {
+	coordinatorID, exists := dc.offsetCoordinators[group]
 	if !exists {
-		err := this.refreshOffsetCoordinator(group)
+		err := dc.refreshOffsetCoordinator(group)
 		if err != nil {
 			return nil, err
 		}
-		coordinatorId = this.offsetCoordinators[group]
+		coordinatorID = dc.offsetCoordinators[group]
 	}
 
-	Debugf(this, "Offset coordinator for group %s: %d", group, coordinatorId)
+	Debugf(dc, "Offset coordinator for group %s: %d", group, coordinatorID)
 
 	var brokerLink *brokerLink
-	for _, link := range this.links {
-		if link.broker.NodeId == coordinatorId {
+	for _, link := range dc.links {
+		if link.broker.NodeID == coordinatorID {
 			brokerLink = link
 			break
 		}
 	}
 
 	if brokerLink == nil {
-		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorId)
+		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
 	}
 
 	return brokerLink, nil
 }
 
-func (this *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
-	coordinator, err := this.getOffsetCoordinator(group)
+func (dc *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
+	coordinator, err := dc.getOffsetCoordinator(group)
 	if err != nil {
 		return err
 	}
@@ -546,56 +548,57 @@ func (this *DefaultConnector) tryCommitOffset(group string, topic string, partit
 	request := NewOffsetCommitRequest(group)
 	request.AddOffset(topic, partition, offset, time.Now().Unix(), "")
 
-	bytes, err := this.syncSendAndReceive(coordinator, request)
+	bytes, err := dc.syncSendAndReceive(coordinator, request)
 	if err != nil {
 		return err
 	}
 
 	response := new(OffsetCommitResponse)
-	decodingErr := this.decode(bytes, response)
+	decodingErr := dc.decode(bytes, response)
 	if decodingErr != nil {
-		Errorf(this, "Could not decode an OffsetCommitResponse. Reason: %s", decodingErr.Reason())
+		Errorf(dc, "Could not decode an OffsetCommitResponse. Reason: %s", decodingErr.Reason())
 		return decodingErr.Error()
 	}
 
-	if topicErrors, exist := response.Offsets[topic]; !exist {
+	topicErrors, exist := response.Errors[topic]
+	if !exist {
 		return fmt.Errorf("OffsetCommitResponse does not contain information about requested topic")
-	} else {
-		if partitionError, exist := topicErrors[partition]; !exist {
-			return fmt.Errorf("OffsetCommitResponse does not contain information about requested partition")
-		} else if partitionError != NoError {
-			return partitionError
-		}
+	}
+
+	if partitionError, exist := topicErrors[partition]; !exist {
+		return fmt.Errorf("OffsetCommitResponse does not contain information about requested partition")
+	} else if partitionError != ErrNoError {
+		return partitionError
 	}
 
 	return nil
 }
 
-func (this *DefaultConnector) decode(bytes []byte, response Response) *DecodingError {
+func (dc *DefaultConnector) decode(bytes []byte, response Response) *DecodingError {
 	decoder := NewBinaryDecoder(bytes)
 	decodingErr := response.Read(decoder)
 	if decodingErr != nil {
-		Errorf(this, "Could not decode a response. Reason: %s", decodingErr.Reason())
+		Errorf(dc, "Could not decode a response. Reason: %s", decodingErr.Reason())
 		return decodingErr
 	}
 
 	return nil
 }
 
-func (this *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
-	if len(this.links) == 0 {
-		this.refreshMetadata(nil)
+func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
+	if len(dc.links) == 0 {
+		dc.refreshMetadata(nil)
 	}
 
-	response, err := this.sendToAllLinks(this.links, request, check)
+	response, err := dc.sendToAllLinks(dc.links, request, check)
 	if err != nil {
-		response, err = this.sendToAllLinks(this.bootstrapLinks, request, check)
+		response, err = dc.sendToAllLinks(dc.bootstrapLinks, request, check)
 	}
 
 	return response, err
 }
 
-func (this *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request, check func([]byte) Response) (Response, error) {
+func (dc *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request, check func([]byte) Response) (Response, error) {
 	if len(links) == 0 {
 		return nil, errors.New("Empty broker list")
 	}
@@ -604,7 +607,7 @@ func (this *DefaultConnector) sendToAllLinks(links []*brokerLink, request Reques
 	for i := 0; i < len(links); i++ {
 		link := links[i]
 		go func() {
-			bytes, err := this.syncSendAndReceive(link, request)
+			bytes, err := dc.syncSendAndReceive(link, request)
 			responses <- &rawResponseAndError{bytes, link, err}
 		}()
 	}
@@ -615,30 +618,30 @@ func (this *DefaultConnector) sendToAllLinks(links []*brokerLink, request Reques
 		if response.err == nil {
 			if checkResult := check(response.bytes); checkResult != nil {
 				return checkResult, nil
-			} else {
-				response.err = errors.New("Check result did not pass")
 			}
+
+			response.err = errors.New("Check result did not pass")
 		}
 
-		Infof(this, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
+		Infof(dc, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
 	}
 
 	return nil, response.err
 }
 
-func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
+func (dc *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
 	id, conn, err := link.getConnection()
 	if err != nil {
 		link.failed()
 		return nil, err
 	}
 
-	if err := this.send(id, conn, request); err != nil {
+	if err := dc.send(id, conn, request); err != nil {
 		link.failed()
 		return nil, err
 	}
 
-	bytes, err := this.receive(conn)
+	bytes, err := dc.receive(conn)
 	if err != nil {
 		link.failed()
 		return nil, err
@@ -649,19 +652,19 @@ func (this *DefaultConnector) syncSendAndReceive(link *brokerLink, request Reque
 	return bytes, err
 }
 
-func (this *DefaultConnector) send(correlationId int32, conn *net.TCPConn, request Request) error {
-	writer := NewRequestWriter(correlationId, this.config.ClientId, request)
+func (dc *DefaultConnector) send(correlationID int32, conn *net.TCPConn, request Request) error {
+	writer := NewRequestWriter(correlationID, dc.config.ClientID, request)
 	bytes := make([]byte, writer.Size())
 	encoder := NewBinaryEncoder(bytes)
 	writer.Write(encoder)
 
-	conn.SetWriteDeadline(time.Now().Add(this.config.WriteTimeout))
+	conn.SetWriteDeadline(time.Now().Add(dc.config.WriteTimeout))
 	_, err := conn.Write(bytes)
 	return err
 }
 
-func (this *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
-	conn.SetReadDeadline(time.Now().Add(this.config.ReadTimeout))
+func (dc *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
+	conn.SetReadDeadline(time.Now().Add(dc.config.ReadTimeout))
 	header := make([]byte, 8)
 	_, err := io.ReadFull(conn, header)
 	if err != nil {
@@ -682,10 +685,10 @@ func (this *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
 	return response, nil
 }
 
-func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes []byte) Response {
+func (dc *DefaultConnector) topicMetadataValidator(topics []string) func(bytes []byte) Response {
 	return func(bytes []byte) Response {
 		response := new(TopicMetadataResponse)
-		err := this.decode(bytes, response)
+		err := dc.decode(bytes, response)
 		if err != nil {
 			return nil
 		}
@@ -699,14 +702,14 @@ func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes
 					}
 				}
 
-				if topicMetadata.Error != NoError {
-					Infof(this, "Topic metadata err: %s", topicMetadata.Error)
+				if topicMetadata.Error != ErrNoError {
+					Infof(dc, "Topic metadata err: %s", topicMetadata.Error)
 					return nil
 				}
 
 				for _, partitionMetadata := range topicMetadata.PartitionMetadata {
-					if partitionMetadata.Error != NoError && partitionMetadata.Error != ReplicaNotAvailable {
-						Infof(this, "Partition metadata err: %s", partitionMetadata.Error)
+					if partitionMetadata.Error != ErrNoError && partitionMetadata.Error != ErrReplicaNotAvailable {
+						Infof(dc, "Partition metadata err: %s", partitionMetadata.Error)
 						return nil
 					}
 				}
@@ -717,25 +720,25 @@ func (this *DefaultConnector) topicMetadataValidator(topics []string) func(bytes
 	}
 }
 
-func (this *DefaultConnector) consumerMetadataValidator(bytes []byte) Response {
+func (dc *DefaultConnector) consumerMetadataValidator(bytes []byte) Response {
 	response := new(ConsumerMetadataResponse)
-	err := this.decode(bytes, response)
-	if err != nil || response.Error != NoError {
+	err := dc.decode(bytes, response)
+	if err != nil || response.Error != ErrNoError {
 		return nil
 	}
 
 	return response
 }
 
-func (this *DefaultConnector) offsetValidator(bytes []byte) Response {
+func (dc *DefaultConnector) offsetValidator(bytes []byte) Response {
 	response := new(OffsetResponse)
-	err := this.decode(bytes, response)
+	err := dc.decode(bytes, response)
 	if err != nil {
 		return nil
 	}
 	for _, offsets := range response.Offsets {
 		for _, offset := range offsets {
-			if offset.Error != NoError {
+			if offset.Error != ErrNoError {
 				return nil
 			}
 		}
@@ -759,7 +762,7 @@ func newBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duratio
 	correlationIds := make(chan int32)
 	stop := make(chan bool)
 
-	go correlationIdGenerator(correlationIds, stop)
+	go correlationIDGenerator(correlationIds, stop)
 
 	return &brokerLink{
 		broker:         broker,
@@ -769,29 +772,29 @@ func newBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duratio
 	}
 }
 
-func (this *brokerLink) failed() {
-	this.lastConnectTime = time.Now()
-	this.failedAttempts++
+func (bl *brokerLink) failed() {
+	bl.lastConnectTime = time.Now()
+	bl.failedAttempts++
 }
 
-func (this *brokerLink) succeeded() {
+func (bl *brokerLink) succeeded() {
 	timestamp := time.Now()
-	this.lastConnectTime = timestamp
-	this.lastSuccessfulConnectTime = timestamp
+	bl.lastConnectTime = timestamp
+	bl.lastSuccessfulConnectTime = timestamp
 }
 
-func (this *brokerLink) getConnection() (int32, *net.TCPConn, error) {
-	correlationId := <-this.correlationIds
-	conn, err := this.connectionPool.Borrow()
-	return correlationId, conn, err
+func (bl *brokerLink) getConnection() (int32, *net.TCPConn, error) {
+	correlationID := <-bl.correlationIds
+	conn, err := bl.connectionPool.Borrow()
+	return correlationID, conn, err
 }
 
-func correlationIdGenerator(out chan int32, stop chan bool) {
-	var correlationId int32 = 0
+func correlationIDGenerator(out chan int32, stop chan bool) {
+	var correlationID int32
 	for {
 		select {
-		case out <- correlationId:
-			correlationId++
+		case out <- correlationID:
+			correlationID++
 		case <-stop:
 			return
 		}

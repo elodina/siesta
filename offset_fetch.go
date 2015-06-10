@@ -15,28 +15,32 @@ limitations under the License. */
 
 package siesta
 
+// OffsetFetchRequest is used to fetch offsets for a consumer group and given topic partitions.
 type OffsetFetchRequest struct {
 	ConsumerGroup string
 	Offsets       map[string][]int32
 }
 
+// NewOffsetFetchRequest creates a new OffsetFetchRequest for a given consumer group.
 func NewOffsetFetchRequest(group string) *OffsetFetchRequest {
 	return &OffsetFetchRequest{ConsumerGroup: group}
 }
 
-func (this *OffsetFetchRequest) Key() int16 {
+// Key returns the Kafka API key for OffsetFetchRequest.
+func (ofr *OffsetFetchRequest) Key() int16 {
 	return 9
 }
 
-func (this *OffsetFetchRequest) Version() int16 {
+// Version returns the Kafka request version for backwards compatibility.
+func (ofr *OffsetFetchRequest) Version() int16 {
 	return 0
 }
 
-func (this *OffsetFetchRequest) Write(encoder Encoder) {
-	encoder.WriteString(this.ConsumerGroup)
-	encoder.WriteInt32(int32(len(this.Offsets)))
+func (ofr *OffsetFetchRequest) Write(encoder Encoder) {
+	encoder.WriteString(ofr.ConsumerGroup)
+	encoder.WriteInt32(int32(len(ofr.Offsets)))
 
-	for topic, partitions := range this.Offsets {
+	for topic, partitions := range ofr.Offsets {
 		encoder.WriteString(topic)
 		encoder.WriteInt32(int32(len(partitions)))
 
@@ -46,43 +50,45 @@ func (this *OffsetFetchRequest) Write(encoder Encoder) {
 	}
 }
 
-func (this *OffsetFetchRequest) AddOffset(topic string, partition int32) {
-	if this.Offsets == nil {
-		this.Offsets = make(map[string][]int32)
+// AddOffset is a convenience method to add a topic partition to this OffsetFetchRequest.
+func (ofr *OffsetFetchRequest) AddOffset(topic string, partition int32) {
+	if ofr.Offsets == nil {
+		ofr.Offsets = make(map[string][]int32)
 	}
 
-	this.Offsets[topic] = append(this.Offsets[topic], partition)
+	ofr.Offsets[topic] = append(ofr.Offsets[topic], partition)
 }
 
+// OffsetFetchResponse contains fetched offsets for each requested topic partition.
 type OffsetFetchResponse struct {
 	Offsets map[string]map[int32]*FetchedOffset
 }
 
-func (this *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
+func (ofr *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetsMapLength)
+		return NewDecodingError(err, reasonInvalidOffsetsMapLength)
 	}
 
-	this.Offsets = make(map[string]map[int32]*FetchedOffset)
+	ofr.Offsets = make(map[string]map[int32]*FetchedOffset)
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidOffsetFetchResponseTopic)
+			return NewDecodingError(err, reasonInvalidOffsetFetchResponseTopic)
 		}
 
 		offsetsForTopic := make(map[int32]*FetchedOffset)
-		this.Offsets[topic] = offsetsForTopic
+		ofr.Offsets[topic] = offsetsForTopic
 
 		partitionsLength, err := decoder.GetInt32()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidOffsetFetchResponsePartitionsLength)
+			return NewDecodingError(err, reasonInvalidOffsetFetchResponsePartitionsLength)
 		}
 
 		for j := int32(0); j < partitionsLength; j++ {
 			partition, err := decoder.GetInt32()
 			if err != nil {
-				return NewDecodingError(err, reason_InvalidOffsetFetchResponsePartition)
+				return NewDecodingError(err, reasonInvalidOffsetFetchResponsePartition)
 			}
 
 			fetchedOffset := new(FetchedOffset)
@@ -97,40 +103,41 @@ func (this *OffsetFetchResponse) Read(decoder Decoder) *DecodingError {
 	return nil
 }
 
+// FetchedOffset contains a fetched offset for a topic partition, optional metadata and an error if it occurred.
 type FetchedOffset struct {
 	Offset   int64
 	Metadata string
 	Error    error
 }
 
-func (this *FetchedOffset) Read(decoder Decoder) *DecodingError {
+func (ofr *FetchedOffset) Read(decoder Decoder) *DecodingError {
 	offset, err := decoder.GetInt64()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetFetchResponseOffset)
+		return NewDecodingError(err, reasonInvalidOffsetFetchResponseOffset)
 	}
-	this.Offset = offset
+	ofr.Offset = offset
 
 	//TODO metadata returned by Kafka is always empty even if was passed in OffsetCommitRequest. bug?
 	metadata, err := decoder.GetString()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetFetchResponseMetadata)
+		return NewDecodingError(err, reasonInvalidOffsetFetchResponseMetadata)
 	}
-	this.Metadata = metadata
+	ofr.Metadata = metadata
 
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetFetchResponseErrorCode)
+		return NewDecodingError(err, reasonInvalidOffsetFetchResponseErrorCode)
 	}
-	this.Error = BrokerErrors[errCode]
+	ofr.Error = BrokerErrors[errCode]
 
 	return nil
 }
 
 var (
-	reason_InvalidOffsetFetchResponseTopic            = "Invalid topic in OffsetFetchResponse"
-	reason_InvalidOffsetFetchResponsePartitionsLength = "Invalid length for partition data in OffsetFetchResponse"
-	reason_InvalidOffsetFetchResponsePartition        = "Invalid partition in OffsetFetchResponse"
-	reason_InvalidOffsetFetchResponseOffset           = "Invalid offset in OffsetFetchResponse"
-	reason_InvalidOffsetFetchResponseMetadata         = "Invalid metadata in OffsetFetchResponse"
-	reason_InvalidOffsetFetchResponseErrorCode        = "Invalid error code in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponseTopic            = "Invalid topic in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponsePartitionsLength = "Invalid length for partition data in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponsePartition        = "Invalid partition in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponseOffset           = "Invalid offset in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponseMetadata         = "Invalid metadata in OffsetFetchResponse"
+	reasonInvalidOffsetFetchResponseErrorCode        = "Invalid error code in OffsetFetchResponse"
 )

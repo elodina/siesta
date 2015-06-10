@@ -50,15 +50,15 @@ func TestOffsetFetchResponse(t *testing.T) {
 	assertFatal(t, exists, true)
 	offsetsForPartition, exists := offsetsForTopic[0]
 	assertFatal(t, exists, true)
-	assert(t, offsetsForPartition.Error, NoError)
+	assert(t, offsetsForPartition.Error, ErrNoError)
 	assert(t, offsetsForPartition.Metadata, "")
 	assert(t, offsetsForPartition.Offset, int64(7))
 
-	decodeErr(t, new(OffsetFetchResponse), invalidOffsetsLengthOffsetFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetsMapLength))
-	decodeErr(t, new(OffsetFetchResponse), invalidTopicOffsetFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseTopic))
-	decodeErr(t, new(OffsetFetchResponse), invalidPartitionsLengthFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponsePartitionsLength))
-	decodeErr(t, new(OffsetFetchResponse), invalidPartitionFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponsePartition))
-	decodeErr(t, new(OffsetFetchResponse), invalidOffsetFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseOffset))
-	decodeErr(t, new(OffsetFetchResponse), invalidMetadataFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseMetadata))
-	decodeErr(t, new(OffsetFetchResponse), invalidErrorCodeFetchResponseBytes, NewDecodingError(EOF, reason_InvalidOffsetFetchResponseErrorCode))
+	decodeErr(t, new(OffsetFetchResponse), invalidOffsetsLengthOffsetFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetsMapLength))
+	decodeErr(t, new(OffsetFetchResponse), invalidTopicOffsetFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponseTopic))
+	decodeErr(t, new(OffsetFetchResponse), invalidPartitionsLengthFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponsePartitionsLength))
+	decodeErr(t, new(OffsetFetchResponse), invalidPartitionFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponsePartition))
+	decodeErr(t, new(OffsetFetchResponse), invalidOffsetFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponseOffset))
+	decodeErr(t, new(OffsetFetchResponse), invalidMetadataFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponseMetadata))
+	decodeErr(t, new(OffsetFetchResponse), invalidErrorCodeFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidOffsetFetchResponseErrorCode))
 }
