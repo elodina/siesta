@@ -17,6 +17,7 @@ package siesta
 
 import (
 	"fmt"
+
 	log "github.com/cihub/seelog"
 )
 
