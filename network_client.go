@@ -1,14 +1,41 @@
 package siesta
 
+import (
+	"net"
+	"time"
+)
+
 type Node struct {
 	id string
 }
+
+func (n *Node) address() string {
+	return n.id
+}
+
 type ClientRequest struct{}
 type ClientResponse struct{}
-type RequestHeader struct{}
 type ApiKeys struct{}
 type InFlightRequests struct{}
-type ClusterConnectionStates struct{}
+type ClusterConnectionStates struct {
+	connectingNodes   map[string]int64
+	disconnectedNodes []string
+}
+
+func NewClusterConnectionStates() *ClusterConnectionStates {
+	states := &ClusterConnectionStates{}
+	states.connectingNodes = make(map[string]int64)
+	states.disconnectedNodes = make([]string, 0)
+	return states
+}
+
+func (ccs *ClusterConnectionStates) connecting(nodeId string, now int64) {
+	ccs.connectingNodes[nodeId] = now
+}
+
+func (css *ClusterConnectionStates) disconnected(nodeId string) {
+	css.disconnectedNodes = append(css.disconnectedNodes, nodeId)
+}
 
 func (ccs *ClusterConnectionStates) canConnect(nodeId string, now int64) bool {
 	return true
@@ -29,9 +56,8 @@ type KafkaClient interface {
 }
 
 type NetworkClient struct {
-	selector                Selector
 	metadata                Metadata
-	connectionStates        ClusterConnectionStates
+	connectionStates        *ClusterConnectionStates
 	inFlightRequests        InFlightRequests
 	socketSendBuffer        int
 	socketReceiveBuffer     int
@@ -40,9 +66,16 @@ type NetworkClient struct {
 	correlation             int
 	metadataFetchInProgress bool
 	lastNoNodeAvailableMs   int64
+	selector                *connectionPool
+	connection              *net.TCPConn
 }
 
-func NewNetworkClient() *NetworkClient {
+type NetworkClientConfig struct {
+}
+
+func NewNetworkClient(config NetworkClientConfig) *NetworkClient {
+	client := &NetworkClient{}
+	client.connectionStates = NewClusterConnectionStates()
 	return &NetworkClient{}
 }
 
@@ -63,10 +96,15 @@ func (nc *NetworkClient) IsReady(node Node, now int64) bool {
 }
 
 func (nc *NetworkClient) initiateConnect(node Node, now int64) {
+	var err error
 	nc.connectionStates.connecting(node.id, now)
-	err := nc.selector.connect(node.id, node.address(), nc.socketSendBuffer, nc.socketReceiveBuffer)
+	size := 1
+	keepAlive := true
+	keepAlivePeriod := time.Minute
+	nc.selector = newConnectionPool(node.address(), size, keepAlive, keepAlivePeriod)
+	nc.connection, err = nc.selector.connect()
 	if err != nil {
-		connectionStates.disconnected(node.id)
-		metadata.requestUpdate()
+		nc.connectionStates.disconnected(node.id)
+		nc.metadata.requestUpdate()
 	}
 }

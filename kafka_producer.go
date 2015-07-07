@@ -13,6 +13,11 @@ type ProducerConfig struct {
 	MetadataFetchTimeout int64
 	MaxRequestSize       int
 	TotalMemorySize      int
+	CompressionType      string
+	BatchSize            int
+	LingerMs             int64
+	RetryBackoffMs       int64
+	BlockOnBufferFull    bool
 }
 type Serializer func(string) []byte
 
@@ -26,6 +31,23 @@ type Metadata struct{}
 
 func NewMetadata() *Metadata {
 	return &Metadata{}
+}
+
+func (m *Metadata) requestUpdate() {
+}
+
+type RecordAccumulator struct{}
+
+func NewRecordAccumulator(batchSize int,
+	totalMemorySize int,
+	compressionType string,
+	lingerMs int64,
+	retryBackoffMs int64,
+	blockOnBufferFull bool,
+	metrics map[string]Metric,
+	time time.Time,
+	metricTags map[string]string) *RecordAccumulator {
+	return &RecordAccumulator{}
 }
 
 type Producer interface {
@@ -55,6 +77,10 @@ type KafkaProducer struct {
 	metadata               *Metadata
 	maxRequestSize         int
 	totalMemorySize        int
+	metrics                map[string]Metric
+	compressionType        string
+	accumulator            *RecordAccumulator
+	metricTags             map[string]string
 }
 
 func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSerializer Serializer) *KafkaProducer {
@@ -62,10 +88,50 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	producer := &KafkaProducer{}
 	producer.config = config
 	producer.time = time.Now()
+	producer.metrics = make(map[string]Metric)
 	producer.partitioner = NewPartitioner()
 	producer.metadataFetchTimeoutMs = config.MetadataFetchTimeout
 	producer.metadata = NewMetadata()
 	producer.maxRequestSize = config.MaxRequestSize
 	producer.totalMemorySize = config.TotalMemorySize
+	producer.compressionType = config.CompressionType
+	metricTags := make(map[string]string)
+
+	producer.accumulator = NewRecordAccumulator(config.BatchSize,
+		producer.totalMemorySize,
+		producer.compressionType,
+		config.LingerMs,
+		config.RetryBackoffMs,
+		config.BlockOnBufferFull,
+		producer.metrics,
+		producer.time,
+		metricTags)
+
+	networkClientConfig := NetworkClientConfig{}
+	client := NewNetworkClient(networkClientConfig)
+	go sender(producer, client)
+
+	log.Println("Kafka producer started")
+
 	return producer
 }
+
+func sender(producer Producer, client *NetworkClient) {
+
+}
+
+func (kp *KafkaProducer) Send(ProducerRecord) <-chan RecordMetadata {
+	return make(chan RecordMetadata)
+}
+
+func (kp *KafkaProducer) Flush() {}
+
+func (kp *KafkaProducer) PartitionsFor(topic string) []PartitionInfo {
+	return []PartitionInfo{}
+}
+
+func (kp *KafkaProducer) Metrics() map[string]Metric {
+	return make(map[string]Metric)
+}
+
+func (kp *KafkaProducer) Close(timeout int) {}
