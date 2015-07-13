@@ -16,29 +16,53 @@ func (n *Node) address() string {
 type ClientRequest struct{}
 type ClientResponse struct{}
 type ApiKeys struct{}
-type InFlightRequests struct{}
+type InFlightRequests struct {
+	requests                         chan *ClientRequest
+	maxInFlightRequestsPerConnection int
+}
+
+func (ifr *InFlightRequests) canSendMore(nodeId string) bool {
+	return len(ifr.requests) < ifr.maxInFlightRequestsPerConnection
+}
+
+const (
+	Disconnected = iota
+	Connecting
+	Connected
+)
+
+type NodeState struct {
+	timestamp            int64
+	state                int
+	lastConnectAttemptMs int64
+}
+
 type ClusterConnectionStates struct {
-	connectingNodes   map[string]int64
-	disconnectedNodes []string
+	nodeStates         map[string]*NodeState
+	reconnectBackoffMs int64
 }
 
 func NewClusterConnectionStates() *ClusterConnectionStates {
 	states := &ClusterConnectionStates{}
-	states.connectingNodes = make(map[string]int64)
-	states.disconnectedNodes = make([]string, 0)
+	states.nodeStates = make(map[string]*NodeState)
 	return states
 }
 
 func (ccs *ClusterConnectionStates) connecting(nodeId string, now int64) {
-	ccs.connectingNodes[nodeId] = now
+	ccs.nodeStates[nodeId].state = Connecting
 }
 
-func (css *ClusterConnectionStates) disconnected(nodeId string) {
-	css.disconnectedNodes = append(css.disconnectedNodes, nodeId)
+func (ccs *ClusterConnectionStates) disconnected(nodeId string) {
+	ccs.nodeStates[nodeId].state = Disconnected
+}
+
+func (ccs *ClusterConnectionStates) isConnected(nodeId string) bool {
+	return ccs.nodeStates[nodeId].state == Connected
 }
 
 func (ccs *ClusterConnectionStates) canConnect(nodeId string, now int64) bool {
-	return true
+	state := ccs.nodeStates[nodeId]
+	return state.state == Disconnected && now-state.lastConnectAttemptMs >= ccs.reconnectBackoffMs
 }
 
 type KafkaClient interface {
@@ -67,7 +91,7 @@ type NetworkClient struct {
 	metadataFetchInProgress bool
 	lastNoNodeAvailableMs   int64
 	selector                *connectionPool
-	connection              *net.TCPConn
+	connections             map[string]*net.TCPConn
 }
 
 type NetworkClientConfig struct {
@@ -76,6 +100,7 @@ type NetworkClientConfig struct {
 func NewNetworkClient(config NetworkClientConfig) *NetworkClient {
 	client := &NetworkClient{}
 	client.connectionStates = NewClusterConnectionStates()
+	client.connections = make(map[string]*net.TCPConn, 0)
 	return &NetworkClient{}
 }
 
@@ -92,7 +117,15 @@ func (nc *NetworkClient) Ready(node Node, now int64) bool {
 }
 
 func (nc *NetworkClient) IsReady(node Node, now int64) bool {
-	return true
+	if !nc.metadataFetchInProgress && nc.metadata.timeToNextUpdate(now) == 0 {
+		return false
+	} else {
+		return nc.isSendable(node.id)
+	}
+}
+
+func (nc *NetworkClient) isSendable(nodeId string) bool {
+	return nc.connectionStates.isConnected(nodeId) && nc.inFlightRequests.canSendMore(nodeId)
 }
 
 func (nc *NetworkClient) initiateConnect(node Node, now int64) {
@@ -102,9 +135,11 @@ func (nc *NetworkClient) initiateConnect(node Node, now int64) {
 	keepAlive := true
 	keepAlivePeriod := time.Minute
 	nc.selector = newConnectionPool(node.address(), size, keepAlive, keepAlivePeriod)
-	nc.connection, err = nc.selector.connect()
+	conn, err := nc.selector.connect()
 	if err != nil {
 		nc.connectionStates.disconnected(node.id)
 		nc.metadata.requestUpdate()
+	} else {
+		nc.connections[node.id] = conn
 	}
 }
