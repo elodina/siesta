@@ -249,7 +249,7 @@ func (this *DefaultConnector) GetTopicMetadata(topics []string) (*TopicMetadataR
 		time.Sleep(this.config.MetadataBackoff)
 	}
 
-	return nil, errors.New(fmt.Sprintf("Could not get topic metadata for %s after %d retries", topics, this.config.MetadataRetries))
+	return nil, fmt.Errorf("Could not get topic metadata for %s after %d retries", topics, this.config.MetadataRetries)
 }
 
 // GetAvailableOffset issues an offset request to a specified topic and partition with a given offset time.
@@ -341,7 +341,7 @@ func (this *DefaultConnector) CommitOffset(group string, topic string, partition
 		time.Sleep(this.config.CommitOffsetBackoff)
 	}
 
-	return errors.New(fmt.Sprintf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, this.config.CommitOffsetRetries))
+	return fmt.Errorf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, this.config.CommitOffsetRetries)
 }
 
 //func (this *DefaultConnector) Produce(message Message) error {
@@ -445,7 +445,7 @@ func (this *DefaultConnector) tryGetLeader(topic string, partition int32, retrie
 		time.Sleep(this.config.MetadataBackoff)
 	}
 
-	return nil, errors.New(fmt.Sprintf("Could not get leader for %s:%d after %d retries", topic, partition, retries))
+	return nil, fmt.Errorf("Could not get leader for %s:%d after %d retries", topic, partition, retries)
 }
 
 func (this *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
