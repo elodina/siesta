@@ -1,12 +1,27 @@
 package siesta
 
 import (
+	"fmt"
+	"hash"
+	"hash/fnv"
 	"log"
+	"math/rand"
 	"time"
 )
 
-type ProducerRecord struct{}
-type RecordMetadata struct{}
+type ProducerRecord struct {
+	Topic string
+	Key   interface{}
+	Value interface{}
+
+	partition    int32
+	encodedKey   []byte
+	encodedValue []byte
+}
+
+type RecordMetadata struct {
+	Error error
+}
 type PartitionInfo struct{}
 type Metric struct{}
 type ProducerConfig struct {
@@ -19,26 +34,133 @@ type ProducerConfig struct {
 	RetryBackoffMs       int64
 	BlockOnBufferFull    bool
 }
-type Serializer func(string) []byte
 
-type Partitioner struct{}
+type Serializer func(interface{}) ([]byte, error)
 
-func NewPartitioner() *Partitioner {
-	return &Partitioner{}
+func ByteSerializer(value interface{}) ([]byte, error) {
+	if array, ok := value.([]byte); ok {
+		return array, nil
+	}
+
+	return nil, fmt.Errorf("Can't serialize %v", value)
 }
 
-type RecordAccumulator struct{}
+func StringSerializer(value interface{}) ([]byte, error) {
+	if str, ok := value.(string); ok {
+		return []byte(str), nil
+	}
 
-func NewRecordAccumulator(batchSize int,
-	totalMemorySize int,
-	compressionType string,
-	lingerMs int64,
-	retryBackoffMs int64,
-	blockOnBufferFull bool,
-	metrics map[string]Metric,
-	time time.Time,
-	metricTags map[string]string) *RecordAccumulator {
-	return &RecordAccumulator{}
+	return nil, fmt.Errorf("Can't serialize %v to string", value)
+}
+
+type Partitioner interface {
+	Partition(record *ProducerRecord, partitions []int32) (int32, error)
+}
+
+type HashPartitioner struct {
+	random *RandomPartitioner
+	hasher hash.Hash32
+}
+
+func NewHashPartitioner() *HashPartitioner {
+	return &HashPartitioner{
+		random: NewRandomPartitioner(),
+		hasher: fnv.New32a(),
+	}
+}
+
+func (hp *HashPartitioner) Partition(record *ProducerRecord, partitions []int32) (int32, error) {
+	if record.Key == nil {
+		return hp.random.Partition(record, partitions)
+	} else {
+		hp.hasher.Reset()
+		_, err := hp.hasher.Write(record.Key)
+		if err != nil {
+			return -1, err
+		}
+
+		hash := int32(hp.hasher.Sum32())
+		if hash < 0 {
+			hash = -hash
+		}
+
+		return hash % len(partitions), nil
+	}
+}
+
+type RandomPartitioner struct {
+	random *rand.Rand
+}
+
+func NewRandomPartitioner() *RandomPartitioner {
+	return &RandomPartitioner{
+		random: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+}
+
+func (rp *RandomPartitioner) Partition(record *ProducerRecord, partitions []int32) (int32, error) {
+	return rp.random.Int31n(len(partitions))
+}
+
+type RecordAccumulator struct {
+	config        *RecordAccumulatorConfig
+	networkClient *NetworkClient
+	batchSize     int
+	batches       map[string]map[int32][]*ProducerRecord
+
+	addChan chan *ProducerRecord
+}
+
+type RecordAccumulatorConfig struct {
+	batchSize         int
+	totalMemorySize   int
+	compressionType   string
+	lingerMs          int64
+	retryBackoffMs    int64
+	blockOnBufferFull bool
+	metrics           map[string]Metric
+	time              time.Time
+	metricTags        map[string]string
+	networkClient     *NetworkClient
+}
+
+func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
+	accumulator := &RecordAccumulator{}
+	accumulator.config = config
+	accumulator.batchSize = config.batchSize
+	accumulator.addChan = make(chan *ProducerRecord, 100)
+	accumulator.batches = make(map[string]map[int32][]*ProducerRecord)
+	accumulator.networkClient = config.networkClient
+
+	go accumulator.sender()
+
+	return accumulator
+}
+
+func (ra *RecordAccumulator) sender() {
+	for record := range ra.addChan {
+		if ra.batches[record.Topic] == nil {
+			ra.batches[record.Topic] = make(map[int32][]*ProducerRecord)
+		}
+		if ra.batches[record.Topic][record.partition] == nil {
+			ra.batches[record.Topic][record.partition] = make([]*ProducerRecord, 0, ra.batchSize)
+		}
+
+		partitionBatch := ra.batches[record.Topic][record.partition]
+		partitionBatch = append(partitionBatch, record)
+		if len(partitionBatch) == ra.batchSize {
+			request := new(ProduceRequest)
+			request.RequiredAcks = 1    //TODO
+			request.AckTimeoutMs = 2000 //TODO
+			for _, record := range partitionBatch {
+				request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
+			}
+
+			ra.networkClient.send(request)
+
+			partitionBatch = make([]*ProducerRecord, 0, ra.batchSize)
+		}
+	}
 }
 
 type Producer interface {
@@ -63,7 +185,9 @@ type Producer interface {
 type KafkaProducer struct {
 	config                 ProducerConfig
 	time                   time.Time
-	partitioner            *Partitioner
+	partitioner            Partitioner
+	keySerializer          Serializer
+	valueSerializer        Serializer
 	metadataFetchTimeoutMs int64
 	metadata               *Metadata
 	maxRequestSize         int
@@ -80,7 +204,9 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	producer.config = config
 	producer.time = time.Now()
 	producer.metrics = make(map[string]Metric)
-	producer.partitioner = NewPartitioner()
+	producer.partitioner = NewHashPartitioner()
+	producer.keySerializer = keySerializer
+	producer.valueSerializer = valueSerializer
 	producer.metadataFetchTimeoutMs = config.MetadataFetchTimeout
 	producer.metadata = NewMetadata()
 	producer.maxRequestSize = config.MaxRequestSize
@@ -108,12 +234,48 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 }
 
 func sender(producer Producer, client *NetworkClient) {
-
 }
 
-func (kp *KafkaProducer) Send(ProducerRecord) <-chan RecordMetadata {
-	return make(chan RecordMetadata)
+func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
+	metadata := make(chan *RecordMetadata)
+	go kp.send(record, metadata)
+	return metadata
 }
+
+func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordMetadata) {
+	metadata := new(RecordMetadata)
+
+	serializedKey, err := kp.keySerializer(record.Key)
+	if err != nil {
+		metadata.Error = err
+		metadataChan <- metadata
+		return
+	}
+
+	serializedValue, err := kp.valueSerializer(record.Value)
+	if err != nil {
+		metadata.Error = err
+		metadataChan <- metadata
+		return
+	}
+
+	record.encodedKey = serializedKey
+	record.encodedValue = serializedValue
+
+	partition, err := kp.partitioner.Partition(record, []int32{0, 1, 2}) //TODO get metadata
+	if err != nil {
+		metadata.Error = err
+		metadataChan <- metadata
+		return
+	}
+	record.partition = partition
+
+	kp.accumulator.addChan <- record
+}
+
+//func (kp *KafkaProducer) SendCallback(ProducerRecord, Callback) <-chan RecordMetadata {
+//	return make(chan RecordMetadata)
+//}
 
 func (kp *KafkaProducer) Flush() {}
 

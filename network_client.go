@@ -17,7 +17,7 @@ func (n *Node) address() string {
 }
 
 type ClientRequest struct {
-	destination string
+
 }
 type Send struct{}
 type ClientResponse struct{
@@ -160,14 +160,14 @@ func (nc *NetworkClient) isSendable(nodeId string) bool {
 	return nc.connectionStates.isConnected(nodeId) && nc.inFlightRequests.canSendMore(nodeId)
 }
 
-func (nc *NetworkClient) send(request *ClientRequest) error {
+func (nc *NetworkClient) send(request Request) error {
 	nodeId := request.destination
 	if !nc.isSendable(nodeId) {
 		log.Printf("Attempt to send a request to node %s which is not ready.", nodeId)
 		return errors.New("Node is not ready.")
 	} else {
 		nc.inFlightRequests.requests <- request
-		//nc.selector.send(request)
+		nc.selector.send(request)
 		return nil
 	}
 }
