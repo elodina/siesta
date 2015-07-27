@@ -150,3 +150,7 @@ func listenForResponse(topic string, partition int32, batch []*ProducerRecord, r
 		}
 	}
 }
+
+func (nc *NetworkClient) close() {
+	nc.selector.Close()
+}

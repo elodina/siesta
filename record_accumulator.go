@@ -48,14 +48,15 @@ func (ra *RecordAccumulator) sender() {
 
 		partitionBatch := ra.batches[record.Topic][record.partition]
 		partitionBatch = append(partitionBatch, record)
-        ra.batches[record.Topic][record.partition] = partitionBatch
+		ra.batches[record.Topic][record.partition] = partitionBatch
 		if len(partitionBatch) == ra.batchSize {
 			go ra.networkClient.send(record.Topic, record.partition, partitionBatch)
-            ra.batches[record.Topic][record.partition] = make([]*ProducerRecord, 0, ra.batchSize)
+			ra.batches[record.Topic][record.partition] = make([]*ProducerRecord, 0, ra.batchSize)
 		}
 	}
 }
 
 func (ra *RecordAccumulator) close() {
 	close(ra.addChan)
+	ra.networkClient.close()
 }

@@ -87,6 +87,11 @@ func (s *Selector) Start() {
 	}
 }
 
+func (s *Selector) Close() {
+	close(s.requests)
+	close(s.responses)
+}
+
 func (s *Selector) Send(link BrokerLink, request Request) <-chan *rawResponseAndError {
 	responseChan := make(chan *rawResponseAndError, 1) //make this buffered so we don't block if noone reads the response
 	s.requests <- &NetworkRequest{link, request, responseChan}
