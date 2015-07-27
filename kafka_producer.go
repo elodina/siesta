@@ -3,8 +3,8 @@ package siesta
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
-    "sync"
 )
 
 type ProducerRecord struct {
@@ -102,7 +102,7 @@ type KafkaProducer struct {
 	accumulator            *RecordAccumulator
 	metricTags             map[string]string
 	connector              Connector
-    topicMetadataLock sync.Mutex
+	topicMetadataLock      sync.Mutex
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
@@ -145,7 +145,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
 	metadata := make(chan *RecordMetadata, 1)
-	go kp.send(record, metadata)
+	kp.send(record, metadata)
 	return metadata
 }
 
@@ -190,8 +190,8 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 
 //TODO cache
 func (kp *KafkaProducer) partitionsForTopic(topic string) ([]int32, error) {
-    kp.topicMetadataLock.Lock()
-    defer kp.topicMetadataLock.Unlock()
+	kp.topicMetadataLock.Lock()
+	defer kp.topicMetadataLock.Unlock()
 
 	topicMetadataResponse, err := kp.connector.GetTopicMetadata([]string{topic})
 	if err != nil {
