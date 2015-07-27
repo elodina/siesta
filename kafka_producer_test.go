@@ -71,7 +71,7 @@ func TestProducerSend1000(t *testing.T) {
             assert(t, metadata.Topic, "siesta")
             assert(t, metadata.Partition, int32(0))
         case <-time.After(5 * time.Second):
-            t.Error("Could not get produce response within 5 seconds")
+            t.Fatal("Could not get produce response within 5 seconds")
         }
     }
 }
