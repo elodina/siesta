@@ -13,24 +13,6 @@ func (n *Node) address() string {
 	return n.id
 }
 
-type ClientRequest struct {
-}
-type Send struct{}
-type ClientResponse struct {
-	request      ClientRequest
-	received     bool
-	disconnected bool
-}
-type ApiKeys struct{}
-type InFlightRequests struct {
-	requests                         chan *ClientRequest
-	maxInFlightRequestsPerConnection int
-}
-
-func (ifr *InFlightRequests) canSendMore(nodeId string) bool {
-	return len(ifr.requests) < ifr.maxInFlightRequestsPerConnection
-}
-
 const (
 	Disconnected = iota
 	Connecting
@@ -85,25 +67,10 @@ func (ccs *ClusterConnectionStates) connectionDelay(nodeId string, now int64) in
 	}
 }
 
-type KafkaClient interface {
-	IsReady(Node, int64) bool
-	Ready(Node, int64) bool
-	ConnectionDelay(Node, int64) int64
-	ConnectionFailed(Node) bool
-	Send(ClientRequest)
-	Poll(int64, int64) []ClientResponse
-	CompleteAll(string, int64) []ClientResponse
-	LeastLoadedNode(int64) Node
-	InFlightRequestCount(string) int
-	NextRequestHeader(ApiKeys) RequestHeader
-	Wakeup()
-}
-
 type NetworkClient struct {
 	connector               Connector
 	metadata                Metadata
 	connectionStates        *ClusterConnectionStates
-	inFlightRequests        InFlightRequests
 	socketSendBuffer        int
 	socketReceiveBuffer     int
 	clientId                string
@@ -113,6 +80,7 @@ type NetworkClient struct {
 	lastNoNodeAvailableMs   int64
 	selector                *Selector
 	connections             map[string]*net.TCPConn
+	requiredAcks            int
 }
 
 type NetworkClientConfig struct {
@@ -121,6 +89,7 @@ type NetworkClientConfig struct {
 func NewNetworkClient(config NetworkClientConfig, connector Connector, producerConfig *ProducerConfig) *NetworkClient {
 	client := &NetworkClient{}
 	client.connector = connector
+	client.requiredAcks = producerConfig.RequiredAcks
 	selectorConfig := NewSelectorConfig(producerConfig)
 	client.selector = NewSelector(selectorConfig)
 	client.connectionStates = NewClusterConnectionStates()
@@ -128,36 +97,12 @@ func NewNetworkClient(config NetworkClientConfig, connector Connector, producerC
 	return client
 }
 
-//func (nc *NetworkClient) Ready(node Node, now int64) bool {
-//	if nc.IsReady(node, now) {
-//		return true
-//	}
-//
-//	if nc.connectionStates.canConnect(node.id, now) {
-//		nc.initiateConnect(node, now)
-//	}
-//
-//	return false
-//}
-
 func (nc *NetworkClient) connectionDelay(node *Node, now int64) int64 {
 	return nc.connectionStates.connectionDelay(node.id, now)
 }
 
 func (nc *NetworkClient) connectionFailed(node *Node) bool {
 	return nc.connectionStates.nodeStates[node.id].state == Disconnected
-}
-
-func (nc *NetworkClient) IsReady(node Node, now int64) bool {
-	if !nc.metadataFetchInProgress && nc.metadata.timeToNextUpdate(now) == 0 {
-		return false
-	} else {
-		return nc.isSendable(node.id)
-	}
-}
-
-func (nc *NetworkClient) isSendable(nodeId string) bool {
-	return nc.connectionStates.isConnected(nodeId) && nc.inFlightRequests.canSendMore(nodeId)
 }
 
 func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRecord) {
@@ -169,7 +114,7 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 	}
 
 	request := new(ProduceRequest)
-	request.RequiredAcks = 1    //TODO
+	request.RequiredAcks = int16(nc.requiredAcks)
 	request.AckTimeoutMs = 2000 //TODO
 	for _, record := range batch {
 		request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
@@ -205,150 +150,3 @@ func listenForResponse(topic string, partition int32, batch []*ProducerRecord, r
 		}
 	}
 }
-
-// func (nc *NetworkClient) poll(timeout int64, now int64) ([]ClientResponse, error) {
-// 	var waitForMetadataFetch int64
-// 	timeToNextMetadataUpdate := nc.metadata.timeToNextUpdate(now)
-// 	timeToNextReconnectAttempt := maxInt64(nc.lastNoNodeAvailableMs+nc.metadata.refreshBackoff()-now, 0)
-// 	if nc.metadataFetchInProgress {
-// 		waitForMetadataFetch = math.MaxInt64
-// 	} else {
-// 		waitForMetadataFetch = 0
-// 	}
-// 	metadataTimeout := maxInt64(timeToNextMetadataUpdate, timeToNextReconnectAttempt, waitForMetadataFetch)
-// 	if metadataTimeout == 0 {
-// 		nc.maybeUpdateMetadata(now)
-// 	}
-// 	err := nc.selector.poll(minInt64(timeout, metadataTimeout))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	// process completed actions
-// 	responses := make([]ClientResponse, 0)
-// 	responses = nc.handleCompletedSends(responses, now)
-// 	responses = nc.handleCompletedReceives(responses, now)
-// 	responses = nc.handleDisconnections(responses, now)
-// 	nc.handleConnections()
-// 	// invoke callbacks
-// 	for _, response := range responses {
-// 		if response.request.hasCallback() {
-// 			response.request.callback(response)
-// 		}
-// 	}
-// 	return responses, nil
-// }
-
-// func (nc *NetworkClient) handleCompletedSends(responses []ClientResponse, now int64) []ClientResponse {
-// 	for _, send := nc.selector.completedSends() {
-// 		request := nc.inFlightRequests.lastSent(send.destination)
-// 		if !request.expectResponse {
-// 			nc.inFlightRequests.completeLastSent(send.destination)
-// 			return append(responses, &ClientResponse{request: request, received: now, disconnected: false, responseBody: []byte{}})
-// 		}
-// 	}
-// 	return responses
-// }
-
-// func (nc *NetworkClient) handleCompletedReceives(responses []ClientResponse, now int64) []ClientResponse {
-// 	for _, receive := nc.selector.completedReceives() {
-// 		source := receive.source
-// 		req := nc.inFlightRequests.completeNext(source)
-// 		header := ResponseHeader.parse(receive.payload)
-// 		apiKey := req.request.header.apiKey
-// 		body := readBody(receive.payload)
-// 		correlate(req.request.header, header)
-// 		if apiKey == ApiKeys.Metadata.id {
-// 			handleMetadataResponse(req.request.header, body, now)
-// 			return responses
-// 		} else {
-// 			return append(responses, &ClientResponse{request: req, received: now, disconnected: false, responseBody: body})
-// 		}
-// 	}
-// }
-
-// func (nc *NetworkClient) handleMetadataResponse(header RequestHeader, body []byte, now int64) {
-// 	nc.metadataFetchInProgress = false
-// 	cluster := response.cluster
-// 	if len(response.errors) > 0 {
-// 		log.Printf("Error while fetching metadata with correlation id %s : %q", header.correlationId, response.errors)
-// 	}
-// 	if len(cluster.nodes) > 0 {
-// 		nc.metadata.update(cluster, now)
-// 	} else {
-// 		log.Println("Ignoring empty metadata response with correlation id %s.", header.correlationId)
-// 		nc.metadata.failedUpdate(now)
-// 	}
-// }
-
-// func (nc *NetworkClient) handleDisconnections(responses []ClientResponse, now int64) []ClientResponse {
-// 	for _, node := range nc.selector.disconnected() {
-// 		nc.connectionStates.disconnected(node)
-// 		log.Printf("Node %s disconnected.", node.id)
-// 		for _, request := nc.inFlightRequests.clearAll(node) {
-// 			requestKey := ApiKeys.forId(request.request.header.apiKey)
-// 			if requestKey == ApiKeys.Metadata {
-// 				nc.metadataFetchInProgress = false
-// 			} else {
-// 				responses = append(responses, &ClientResponse{request: request, received: now, disconnected: true, []byte{}})
-// 			}
-// 		}
-// 	}
-// 	return responses
-// }
-
-// func (nc *NetworkClient) handleConnections() {
-// 	for _, node := nc.selector.connected {
-// 		log.Printf("Completed connection to node %s", node.id)
-// 		nc.connectionStates.connected(node)
-// 	}
-// }
-
-// func (nc *NetworkClient) correlate(requestHeader RequestHeader, responseHeader ResponseHeader) error {
-// 	if requestHeader.correlationId != responseHeader.correlationId {
-// 		return errors.New(fmt.Sprintf("Correlation id for response (%s) does not match request (%s)",
-// 			responseHeader.correlationId, requestHeader.correlationId))
-// 	}
-// 	return nil
-// }
-
-// func (nc *NetworkClient) metadataRequest(now int64, nodeId string, topics []string) *ClientRequest {
-// 	metadata := &MetadataRequest{topics: topics}
-// 	send := &RequestSend(nodeId, nc.NewRequestHeader(ApiKeys.Metadata), metadata.toStruct())
-// 	return &ClientRequest(now, true, send, null)
-// }
-
-// func (nc *NetworkClient) maybeUpdateMetadata(now int64) {
-// 	node := nc.leastLoadedNode(now)
-// 	if node == nil {
-// 		nc.lastNoNodeAvailableMs = now
-// 		return
-// 	}
-// 	nodeConnectionId = node.id
-// 	if nc.connectionStates.isConnected(nodeConnectionId) && nc.inFlightRequests.canSendMore(nodeConnectionId) {
-// 		topics := nc.metadata.topics
-// 		nc.metadataFetchInProgress = true
-// 		metadataRequest := nc.metadataRequest(now, nodeConnectionId, topics)
-// 		nc.selector.send(metadataRequest.request())
-// 		nc.inFlightRequests.add(metadataRequest)
-// 	} else if nc.connectionStates.canConnect(nodeConnectionId, now) {
-// 		nc.initializeConnect(node, now)
-// 	} else {
-// 		nc.lastNoNodeAvailableMs = now
-// 	}
-// }
-//
-//func (nc *NetworkClient) initiateConnect(node Node, now int64) {
-//	var err error
-//	nc.connectionStates.connecting(node.id, now)
-//	size := 1
-//	keepAlive := true
-//	keepAlivePeriod := time.Minute
-//	nc.selector = newConnectionPool(node.address(), size, keepAlive, keepAlivePeriod)
-//	conn, err := nc.selector.connect()
-//	if err != nil {
-//		nc.connectionStates.disconnected(node.id)
-//		nc.metadata.requestUpdate()
-//	} else {
-//		nc.connections[node.id] = conn
-//	}
-//}

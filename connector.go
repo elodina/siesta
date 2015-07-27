@@ -361,11 +361,6 @@ func (dc *DefaultConnector) GetLeader(topic string, partition int32) (BrokerLink
 	return link, nil
 }
 
-//func (this *DefaultConnector) Produce(message Message) error {
-//	//TODO keep in mind: If RequiredAcks == 0 the server will not send any response (this is the only case where the server will not reply to a request)
-//	panic("Not implemented yet")
-//}
-
 // Close tells the Connector to close all existing connections and stop.
 // This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 func (dc *DefaultConnector) Close() <-chan bool {

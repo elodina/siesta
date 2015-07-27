@@ -191,10 +191,6 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 	kp.accumulator.addChan <- record
 }
 
-//func (kp *KafkaProducer) SendCallback(ProducerRecord, Callback) <-chan RecordMetadata {
-//	return make(chan RecordMetadata)
-//}
-
 func (kp *KafkaProducer) Flush() {}
 
 func (kp *KafkaProducer) PartitionsFor(topic string) []PartitionInfo {
