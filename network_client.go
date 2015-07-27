@@ -111,19 +111,21 @@ type NetworkClient struct {
 	correlation             int
 	metadataFetchInProgress bool
 	lastNoNodeAvailableMs   int64
-	selector                Selector
+	selector                *Selector
 	connections             map[string]*net.TCPConn
 }
 
 type NetworkClientConfig struct {
 }
 
-func NewNetworkClient(config NetworkClientConfig, connector Connector) *NetworkClient {
+func NewNetworkClient(config NetworkClientConfig, connector Connector, producerConfig *ProducerConfig) *NetworkClient {
 	client := &NetworkClient{}
 	client.connector = connector
+	selectorConfig := NewSelectorConfig(producerConfig)
+	client.selector = NewSelector(selectorConfig)
 	client.connectionStates = NewClusterConnectionStates()
 	client.connections = make(map[string]*net.TCPConn, 0)
-	return &NetworkClient{}
+	return client
 }
 
 //func (nc *NetworkClient) Ready(node Node, now int64) bool {
@@ -172,7 +174,6 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 	for _, record := range batch {
 		request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
 	}
-
 	responseChan := nc.selector.Send(leader, request)
 	go listenForResponse(topic, partition, batch, responseChan)
 }

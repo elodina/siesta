@@ -16,13 +16,12 @@ limitations under the License. */
 package siesta
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
 
 func TestSelector(t *testing.T) {
-	selectorConfig := NewSelectorConfig()
+	selectorConfig := DefaultSelectorConfig()
 	selector := NewSelector(selectorConfig)
 
 	link := newBrokerLink(&Broker{ID: 1, Host: "localhost", Port: 9092},
@@ -49,6 +48,4 @@ func TestSelector(t *testing.T) {
 
 	assert(t, response1.err, nil)
 	assert(t, response2.err, nil)
-	fmt.Println(response1.bytes)
-	fmt.Println(response2.bytes)
 }

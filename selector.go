@@ -37,7 +37,7 @@ type SelectorConfig struct {
 	RequiredAcks    int
 }
 
-func NewSelectorConfig() *SelectorConfig {
+func DefaultSelectorConfig() *SelectorConfig {
 	return &SelectorConfig{
 		ClientID:        "siesta",
 		MaxRequests:     10,
@@ -46,6 +46,18 @@ func NewSelectorConfig() *SelectorConfig {
 		ReadTimeout:     5 * time.Second,
 		WriteTimeout:    5 * time.Second,
 		RequiredAcks:    1,
+	}
+}
+
+func NewSelectorConfig(producerConfig *ProducerConfig) *SelectorConfig {
+	return &SelectorConfig{
+		ClientID:        producerConfig.ClientID,
+		MaxRequests:     producerConfig.MaxRequests,
+		SendRoutines:    producerConfig.SendRoutines,
+		ReceiveRoutines: producerConfig.ReceiveRoutines,
+		ReadTimeout:     producerConfig.ReadTimeout,
+		WriteTimeout:    producerConfig.WriteTimeout,
+		RequiredAcks:    producerConfig.RequiredAcks,
 	}
 }
 
@@ -61,7 +73,6 @@ func NewSelector(config *SelectorConfig) *Selector {
 		requests:  make(chan *NetworkRequest, config.MaxRequests),
 		responses: make(chan *ConnectionRequest, config.MaxRequests),
 	}
-
 	selector.Start()
 	return selector
 }

@@ -63,3 +63,7 @@ func (ra *RecordAccumulator) sender() {
 		}
 	}
 }
+
+func (ra *RecordAccumulator) close() {
+	close(ra.addChan)
+}

@@ -23,6 +23,7 @@ type RecordMetadata struct {
 	Partition int32
 	Error     error
 }
+
 type PartitionInfo struct{}
 type Metric struct{}
 type ProducerConfig struct {
@@ -34,11 +35,23 @@ type ProducerConfig struct {
 	LingerMs             int64
 	RetryBackoffMs       int64
 	BlockOnBufferFull    bool
+
+	ClientID        string
+	MaxRequests     int
+	SendRoutines    int
+	ReceiveRoutines int
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	RequiredAcks    int
 }
 
 type Serializer func(interface{}) ([]byte, error)
 
 func ByteSerializer(value interface{}) ([]byte, error) {
+	if value == nil {
+		return nil, nil
+	}
+
 	if array, ok := value.([]byte); ok {
 		return array, nil
 	}
@@ -74,7 +87,7 @@ type Producer interface {
 }
 
 type KafkaProducer struct {
-	config                 ProducerConfig
+	config                 *ProducerConfig
 	time                   time.Time
 	partitioner            Partitioner
 	keySerializer          Serializer
@@ -90,7 +103,7 @@ type KafkaProducer struct {
 	connector              Connector
 }
 
-func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
+func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
 	log.Println("Starting the Kafka producer")
 	producer := &KafkaProducer{}
 	producer.config = config
@@ -108,8 +121,7 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
-	client := NewNetworkClient(networkClientConfig, connector)
-	go sender(producer, client)
+	client := NewNetworkClient(networkClientConfig, connector, config)
 
 	accumulatorConfig := &RecordAccumulatorConfig{
 		batchSize:         config.BatchSize,
@@ -127,9 +139,6 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	log.Println("Kafka producer started")
 
 	return producer
-}
-
-func sender(producer Producer, client *NetworkClient) {
 }
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
@@ -210,4 +219,7 @@ func (kp *KafkaProducer) Metrics() map[string]Metric {
 	return make(map[string]Metric)
 }
 
-func (kp *KafkaProducer) Close(timeout int) {}
+func (kp *KafkaProducer) Close(timeout int) {
+
+	kp.accumulator.close()
+}
