@@ -29,6 +29,7 @@ type PartitionInfo struct{}
 type Metric struct{}
 type ProducerConfig struct {
 	MetadataFetchTimeout int64
+	MetadataExpireMs     int64
 	MaxRequestSize       int
 	TotalMemorySize      int
 	CompressionType      string
@@ -103,6 +104,7 @@ type KafkaProducer struct {
 	metricTags             map[string]string
 	connector              Connector
 	topicMetadataLock      sync.Mutex
+	metadataCache          *topicMetadataCache
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
@@ -120,6 +122,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	producer.totalMemorySize = config.TotalMemorySize
 	producer.compressionType = config.CompressionType
 	producer.connector = connector
+	producer.metadataCache = newTopicMetadataCache(connector, time.Duration(config.MetadataExpireMs)*time.Millisecond) //TODO we should probably accept configs in time.Duration and not like BlaBlaMs
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
@@ -169,7 +172,7 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 	record.encodedKey = serializedKey
 	record.encodedValue = serializedValue
 
-	partitions, err := kp.partitionsForTopic(record.Topic)
+	partitions, err := kp.metadataCache.Get(record.Topic)
 	if err != nil {
 		metadata.Error = err
 		metadataChan <- metadata
@@ -186,29 +189,6 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 	record.metadataChan = metadataChan
 
 	kp.accumulator.addChan <- record
-}
-
-//TODO cache
-func (kp *KafkaProducer) partitionsForTopic(topic string) ([]int32, error) {
-	kp.topicMetadataLock.Lock()
-	defer kp.topicMetadataLock.Unlock()
-
-	topicMetadataResponse, err := kp.connector.GetTopicMetadata([]string{topic})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, topicMetadata := range topicMetadataResponse.TopicsMetadata {
-		if topic == topicMetadata.Topic {
-			partitions := make([]int32, 0)
-			for _, partitionMetadata := range topicMetadata.PartitionsMetadata {
-				partitions = append(partitions, partitionMetadata.PartitionID)
-			}
-			return partitions, nil
-		}
-	}
-
-	return nil, fmt.Errorf("Topic Metadata response did not contain metadata for topic %s", topic)
 }
 
 //func (kp *KafkaProducer) SendCallback(ProducerRecord, Callback) <-chan RecordMetadata {
@@ -228,4 +208,78 @@ func (kp *KafkaProducer) Metrics() map[string]Metric {
 func (kp *KafkaProducer) Close(timeout int) {
 
 	kp.accumulator.close()
+}
+
+type topicMetadataCache struct {
+	connector   Connector
+	ttl         time.Duration
+	cache       map[string]*topicMetadataCacheEntry
+	refreshLock sync.Mutex
+}
+
+func newTopicMetadataCache(connector Connector, ttl time.Duration) *topicMetadataCache {
+	return &topicMetadataCache{
+		connector: connector,
+		ttl:       ttl,
+		cache:     make(map[string]*topicMetadataCacheEntry),
+	}
+}
+
+func (tmc *topicMetadataCache) Get(topic string) ([]int32, error) {
+	cache := tmc.cache[topic]
+	if cache == nil {
+		err := tmc.Refresh([]string{topic})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	cache = tmc.cache[topic]
+	if cache != nil {
+		if cache.timestamp.Add(tmc.ttl).Before(time.Now()) {
+			err := tmc.Refresh([]string{topic})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		cache = tmc.cache[topic]
+		if cache != nil {
+			return cache.partitions, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Could not get topic metadata for topic %s", topic)
+}
+
+func (tmc *topicMetadataCache) Refresh(topics []string) error {
+	tmc.refreshLock.Lock()
+	defer tmc.refreshLock.Unlock()
+
+	topicMetadataResponse, err := tmc.connector.GetTopicMetadata(topics)
+	if err != nil {
+		return err
+	}
+
+	for _, topicMetadata := range topicMetadataResponse.TopicsMetadata {
+		partitions := make([]int32, 0)
+		for _, partitionMetadata := range topicMetadata.PartitionsMetadata {
+			partitions = append(partitions, partitionMetadata.PartitionID)
+		}
+		tmc.cache[topicMetadata.Topic] = newTopicMetadataCacheEntry(partitions)
+	}
+
+	return nil
+}
+
+type topicMetadataCacheEntry struct {
+	partitions []int32
+	timestamp  time.Time
+}
+
+func newTopicMetadataCacheEntry(partitions []int32) *topicMetadataCacheEntry {
+	return &topicMetadataCacheEntry{
+		partitions: partitions,
+		timestamp:  time.Now(),
+	}
 }
