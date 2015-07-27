@@ -16,49 +16,31 @@ limitations under the License. */
 package siesta
 
 import (
-	"math"
-	"sync"
+	"testing"
+	"time"
 )
 
-func inLock(lock *sync.Mutex, fun func()) {
-	lock.Lock()
-	defer lock.Unlock()
-
-	fun()
-}
-
-func inReadLock(lock *sync.RWMutex, fun func()) {
-	lock.RLock()
-	defer lock.RUnlock()
-
-	fun()
-}
-
-func inWriteLock(lock *sync.RWMutex, fun func()) {
-	lock.Lock()
-	defer lock.Unlock()
-
-	fun()
-}
-
-func maxInt64(ints ...int64) int64 {
-	var max int64
-	max = math.MinInt64
-	for _, value := range ints {
-		if value > max {
-			max = value
-		}
+func TestProducer(t *testing.T) {
+	connector := testConnector(t)
+	producerConfig := &ProducerConfig{
+		BatchSize:       1,
+		ClientID:        "siesta",
+		MaxRequests:     10,
+		SendRoutines:    10,
+		ReceiveRoutines: 10,
+		ReadTimeout:     5 * time.Second,
+		WriteTimeout:    5 * time.Second,
+		RequiredAcks:    1,
 	}
-	return max
-}
+	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
+	metadataChan := producer.Send(&ProducerRecord{Topic: "siesta", Value: "hello world"})
 
-func minInt64(ints ...int64) int64 {
-	var min int64
-	min = math.MaxInt64
-	for _, value := range ints {
-		if value < min {
-			min = value
-		}
+	select {
+	case metadata := <-metadataChan:
+		assert(t, metadata.Error, ErrNoError)
+		assert(t, metadata.Topic, "siesta")
+		assert(t, metadata.Partition, int32(0))
+	case <-time.After(5 * time.Second):
+		t.Error("Could not get produce response within 5 seconds")
 	}
-	return min
 }
