@@ -111,58 +111,6 @@ type RecordAccumulator struct {
 	addChan chan *ProducerRecord
 }
 
-type RecordAccumulatorConfig struct {
-	batchSize         int
-	totalMemorySize   int
-	compressionType   string
-	lingerMs          int64
-	retryBackoffMs    int64
-	blockOnBufferFull bool
-	metrics           map[string]Metric
-	time              time.Time
-	metricTags        map[string]string
-	networkClient     *NetworkClient
-}
-
-func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
-	accumulator := &RecordAccumulator{}
-	accumulator.config = config
-	accumulator.batchSize = config.batchSize
-	accumulator.addChan = make(chan *ProducerRecord, 100)
-	accumulator.batches = make(map[string]map[int32][]*ProducerRecord)
-	accumulator.networkClient = config.networkClient
-
-	go accumulator.sender()
-
-	return accumulator
-}
-
-func (ra *RecordAccumulator) sender() {
-	for record := range ra.addChan {
-		if ra.batches[record.Topic] == nil {
-			ra.batches[record.Topic] = make(map[int32][]*ProducerRecord)
-		}
-		if ra.batches[record.Topic][record.partition] == nil {
-			ra.batches[record.Topic][record.partition] = make([]*ProducerRecord, 0, ra.batchSize)
-		}
-
-		partitionBatch := ra.batches[record.Topic][record.partition]
-		partitionBatch = append(partitionBatch, record)
-		if len(partitionBatch) == ra.batchSize {
-			request := new(ProduceRequest)
-			request.RequiredAcks = 1    //TODO
-			request.AckTimeoutMs = 2000 //TODO
-			for _, record := range partitionBatch {
-				request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
-			}
-
-			ra.networkClient.send(request)
-
-			partitionBatch = make([]*ProducerRecord, 0, ra.batchSize)
-		}
-	}
-}
-
 type Producer interface {
 	// Send the given record asynchronously and return a channel which will eventually contain the response information.
 	Send(ProducerRecord) <-chan RecordMetadata
@@ -196,9 +144,10 @@ type KafkaProducer struct {
 	compressionType        string
 	accumulator            *RecordAccumulator
 	metricTags             map[string]string
+	connector              Connector
 }
 
-func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSerializer Serializer) *KafkaProducer {
+func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
 	log.Println("Starting the Kafka producer")
 	producer := &KafkaProducer{}
 	producer.config = config
@@ -212,21 +161,25 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	producer.maxRequestSize = config.MaxRequestSize
 	producer.totalMemorySize = config.TotalMemorySize
 	producer.compressionType = config.CompressionType
+	producer.connector = connector
 	metricTags := make(map[string]string)
-
-	producer.accumulator = NewRecordAccumulator(config.BatchSize,
-		producer.totalMemorySize,
-		producer.compressionType,
-		config.LingerMs,
-		config.RetryBackoffMs,
-		config.BlockOnBufferFull,
-		producer.metrics,
-		producer.time,
-		metricTags)
 
 	networkClientConfig := NetworkClientConfig{}
 	client := NewNetworkClient(networkClientConfig)
 	go sender(producer, client)
+
+	accumulatorConfig := &RecordAccumulatorConfig{
+		batchSize:         config.BatchSize,
+		totalMemorySize:   producer.totalMemorySize,
+		compressionType:   producer.compressionType,
+		lingerMs:          config.LingerMs,
+		blockOnBufferFull: config.BlockOnBufferFull,
+		metrics:           producer.metrics,
+		time:              producer.time,
+		metricTags:        metricTags,
+		networkClient:     client,
+	}
+	producer.accumulator = NewRecordAccumulator(accumulatorConfig)
 
 	log.Println("Kafka producer started")
 
@@ -262,7 +215,14 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 	record.encodedKey = serializedKey
 	record.encodedValue = serializedValue
 
-	partition, err := kp.partitioner.Partition(record, []int32{0, 1, 2}) //TODO get metadata
+	partitions, err := kp.partitionsForTopic(record.Topic)
+	if err != nil {
+		metadata.Error = err
+		metadataChan <- metadata
+		return
+	}
+
+	partition, err := kp.partitioner.Partition(record, partitions)
 	if err != nil {
 		metadata.Error = err
 		metadataChan <- metadata
@@ -271,6 +231,25 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 	record.partition = partition
 
 	kp.accumulator.addChan <- record
+}
+
+func (kp *KafkaProducer) partitionsForTopic(topic string) ([]int32, error) {
+	topicMetadataResponse, err := kp.connector.GetTopicMetadata([]string{topic})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, topicMetadata := range topicMetadataResponse.TopicsMetadata {
+		if topic == topicMetadata.Topic {
+			partitions := make([]int32, 0)
+			for _, partitionMetadata := range topicMetadata.PartitionsMetadata {
+				partitions = append(partitions, partitionMetadata.PartitionID)
+			}
+			return partitions, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Topic Metadata response did not contain metadata for topic %s", topic)
 }
 
 //func (kp *KafkaProducer) SendCallback(ProducerRecord, Callback) <-chan RecordMetadata {
