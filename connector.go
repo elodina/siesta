@@ -52,6 +52,8 @@ type Connector interface {
 	// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
 	CommitOffset(group string, topic string, partition int32, offset int64) error
 
+	GetLeader(topic string, partition int32) (BrokerLink, error)
+
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 	Close() <-chan bool
@@ -346,6 +348,19 @@ func (dc *DefaultConnector) CommitOffset(group string, topic string, partition i
 	return fmt.Errorf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, dc.config.CommitOffsetRetries)
 }
 
+func (dc *DefaultConnector) GetLeader(topic string, partition int32) (BrokerLink, error) {
+	link := dc.getLeader(topic, partition)
+	if link == nil {
+		link, err := dc.tryGetLeader(topic, partition, dc.config.MetadataRetries)
+		if err != nil {
+			return nil, err
+		}
+		return link, nil
+	}
+
+	return link, nil
+}
+
 //func (this *DefaultConnector) Produce(message Message) error {
 //	//TODO keep in mind: If RequiredAcks == 0 the server will not send any response (this is the only case where the server will not reply to a request)
 //	panic("Not implemented yet")
@@ -623,31 +638,31 @@ func (dc *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request,
 			response.err = errors.New("Check result did not pass")
 		}
 
-		Infof(dc, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
+		//		Infof(dc, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
 	}
 
 	return nil, response.err
 }
 
 func (dc *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
-	id, conn, err := link.getConnection()
+	id, conn, err := link.GetConnection()
 	if err != nil {
-		link.failed()
+		link.Failed()
 		return nil, err
 	}
 
 	if err := dc.send(id, conn, request); err != nil {
-		link.failed()
+		link.Failed()
 		return nil, err
 	}
 
 	bytes, err := dc.receive(conn)
 	if err != nil {
-		link.failed()
+		link.Failed()
 		return nil, err
 	}
 
-	link.succeeded()
+	link.Succeeded()
 	link.connectionPool.Return(conn)
 	return bytes, err
 }
@@ -747,6 +762,13 @@ func (dc *DefaultConnector) offsetValidator(bytes []byte) Response {
 	return response
 }
 
+type BrokerLink interface {
+	Failed()
+	Succeeded()
+	GetConnection() (int32, *net.TCPConn, error)
+	ReturnConnection(*net.TCPConn)
+}
+
 type brokerLink struct {
 	broker                    *Broker
 	connectionPool            *connectionPool
@@ -772,18 +794,22 @@ func newBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duratio
 	}
 }
 
-func (bl *brokerLink) failed() {
+func (bl *brokerLink) Failed() {
 	bl.lastConnectTime = time.Now()
 	bl.failedAttempts++
 }
 
-func (bl *brokerLink) succeeded() {
+func (bl *brokerLink) Succeeded() {
 	timestamp := time.Now()
 	bl.lastConnectTime = timestamp
 	bl.lastSuccessfulConnectTime = timestamp
 }
 
-func (bl *brokerLink) getConnection() (int32, *net.TCPConn, error) {
+func (bl *brokerLink) ReturnConnection(conn *net.TCPConn) {
+	bl.connectionPool.Return(conn)
+}
+
+func (bl *brokerLink) GetConnection() (int32, *net.TCPConn, error) {
 	correlationID := <-bl.correlationIds
 	conn, err := bl.connectionPool.Borrow()
 	return correlationID, conn, err
@@ -803,6 +829,6 @@ func correlationIDGenerator(out chan int32, stop chan bool) {
 
 type rawResponseAndError struct {
 	bytes []byte
-	link  *brokerLink
+	link  BrokerLink
 	err   error
 }

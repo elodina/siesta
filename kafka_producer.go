@@ -2,10 +2,7 @@ package siesta
 
 import (
 	"fmt"
-	"hash"
-	"hash/fnv"
 	"log"
-	"math/rand"
 	"time"
 )
 
@@ -14,13 +11,17 @@ type ProducerRecord struct {
 	Key   interface{}
 	Value interface{}
 
+	metadataChan chan *RecordMetadata
 	partition    int32
 	encodedKey   []byte
 	encodedValue []byte
 }
 
 type RecordMetadata struct {
-	Error error
+	Offset    int64
+	Topic     string
+	Partition int32
+	Error     error
 }
 type PartitionInfo struct{}
 type Metric struct{}
@@ -51,64 +52,6 @@ func StringSerializer(value interface{}) ([]byte, error) {
 	}
 
 	return nil, fmt.Errorf("Can't serialize %v to string", value)
-}
-
-type Partitioner interface {
-	Partition(record *ProducerRecord, partitions []int32) (int32, error)
-}
-
-type HashPartitioner struct {
-	random *RandomPartitioner
-	hasher hash.Hash32
-}
-
-func NewHashPartitioner() *HashPartitioner {
-	return &HashPartitioner{
-		random: NewRandomPartitioner(),
-		hasher: fnv.New32a(),
-	}
-}
-
-func (hp *HashPartitioner) Partition(record *ProducerRecord, partitions []int32) (int32, error) {
-	if record.Key == nil {
-		return hp.random.Partition(record, partitions)
-	} else {
-		hp.hasher.Reset()
-		_, err := hp.hasher.Write(record.encodedKey)
-		if err != nil {
-			return -1, err
-		}
-
-		hash := int32(hp.hasher.Sum32())
-		if hash < 0 {
-			hash = -hash
-		}
-
-		return hash % int32(len(partitions)), nil
-	}
-}
-
-type RandomPartitioner struct {
-	random *rand.Rand
-}
-
-func NewRandomPartitioner() *RandomPartitioner {
-	return &RandomPartitioner{
-		random: rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
-}
-
-func (rp *RandomPartitioner) Partition(record *ProducerRecord, partitions []int32) (int32, error) {
-	return rp.random.Int31n(int32(len(partitions))), nil
-}
-
-type RecordAccumulator struct {
-	config        *RecordAccumulatorConfig
-	networkClient *NetworkClient
-	batchSize     int
-	batches       map[string]map[int32][]*ProducerRecord
-
-	addChan chan *ProducerRecord
 }
 
 type Producer interface {
@@ -165,7 +108,7 @@ func NewKafkaProducer(config ProducerConfig, keySerializer Serializer, valueSeri
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
-	client := NewNetworkClient(networkClientConfig)
+	client := NewNetworkClient(networkClientConfig, connector)
 	go sender(producer, client)
 
 	accumulatorConfig := &RecordAccumulatorConfig{
@@ -190,7 +133,7 @@ func sender(producer Producer, client *NetworkClient) {
 }
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
-	metadata := make(chan *RecordMetadata)
+	metadata := make(chan *RecordMetadata, 1)
 	go kp.send(record, metadata)
 	return metadata
 }
@@ -229,6 +172,7 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 		return
 	}
 	record.partition = partition
+	record.metadataChan = metadataChan
 
 	kp.accumulator.addChan <- record
 }

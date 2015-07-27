@@ -76,7 +76,7 @@ func (s *Selector) Start() {
 	}
 }
 
-func (s *Selector) Send(link *brokerLink, request Request) <-chan *rawResponseAndError {
+func (s *Selector) Send(link BrokerLink, request Request) <-chan *rawResponseAndError {
 	responseChan := make(chan *rawResponseAndError, 1) //make this buffered so we don't block if noone reads the response
 	s.requests <- &NetworkRequest{link, request, responseChan}
 
@@ -86,15 +86,15 @@ func (s *Selector) Send(link *brokerLink, request Request) <-chan *rawResponseAn
 func (s *Selector) requestDispatcher() {
 	for request := range s.requests {
 		link := request.link
-		id, conn, err := link.getConnection()
+		id, conn, err := link.GetConnection()
 		if err != nil {
-			link.failed()
+			link.Failed()
 			request.responseChan <- &rawResponseAndError{nil, link, err}
 			continue
 		}
 
 		if err := s.send(id, conn, request.request); err != nil {
-			link.failed()
+			link.Failed()
 			request.responseChan <- &rawResponseAndError{nil, link, err}
 			continue
 		}
@@ -113,13 +113,13 @@ func (s *Selector) responseDispatcher() {
 
 		bytes, err := s.receive(conn)
 		if err != nil {
-			link.failed()
+			link.Failed()
 			responseChan <- &rawResponseAndError{nil, link, err}
 			continue
 		}
 
-		link.succeeded()
-		link.connectionPool.Return(conn)
+		link.Succeeded()
+		link.ReturnConnection(conn)
 		responseChan <- &rawResponseAndError{bytes, link, err}
 	}
 }
@@ -159,7 +159,7 @@ func (s *Selector) receive(conn *net.TCPConn) ([]byte, error) {
 
 //TODO better struct name
 type NetworkRequest struct {
-	link         *brokerLink
+	link         BrokerLink
 	request      Request
 	responseChan chan *rawResponseAndError
 }

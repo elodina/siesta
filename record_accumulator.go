@@ -15,6 +15,15 @@ type RecordAccumulatorConfig struct {
 	networkClient     *NetworkClient
 }
 
+type RecordAccumulator struct {
+	config        *RecordAccumulatorConfig
+	networkClient *NetworkClient
+	batchSize     int
+	batches       map[string]map[int32][]*ProducerRecord
+
+	addChan chan *ProducerRecord
+}
+
 func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
 	accumulator := &RecordAccumulator{}
 	accumulator.config = config
@@ -40,14 +49,15 @@ func (ra *RecordAccumulator) sender() {
 		partitionBatch := ra.batches[record.Topic][record.partition]
 		partitionBatch = append(partitionBatch, record)
 		if len(partitionBatch) == ra.batchSize {
-			request := new(ProduceRequest)
-			request.RequiredAcks = 1    //TODO
-			request.AckTimeoutMs = 2000 //TODO
-			for _, record := range partitionBatch {
-				request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
-			}
+			//      request := new(ProduceRequest)
+			//      request.RequiredAcks = 1    //TODO
+			//      request.AckTimeoutMs = 2000 //TODO
+			//      for _, record := range partitionBatch {
+			//        request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
+			//      }
 
-			ra.networkClient.send(request)
+			//			ra.networkClient.send(record.Topic, record.partition, request)
+			go ra.networkClient.send(record.Topic, record.partition, partitionBatch)
 
 			partitionBatch = make([]*ProducerRecord, 0, ra.batchSize)
 		}
