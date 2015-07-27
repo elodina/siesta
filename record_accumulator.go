@@ -48,17 +48,9 @@ func (ra *RecordAccumulator) sender() {
 
 		partitionBatch := ra.batches[record.Topic][record.partition]
 		partitionBatch = append(partitionBatch, record)
+        ra.batches[record.Topic][record.partition] = partitionBatch
 		if len(partitionBatch) == ra.batchSize {
-			//      request := new(ProduceRequest)
-			//      request.RequiredAcks = 1    //TODO
-			//      request.AckTimeoutMs = 2000 //TODO
-			//      for _, record := range partitionBatch {
-			//        request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
-			//      }
-
-			//			ra.networkClient.send(record.Topic, record.partition, request)
 			go ra.networkClient.send(record.Topic, record.partition, partitionBatch)
-
 			partitionBatch = make([]*ProducerRecord, 0, ra.batchSize)
 		}
 	}
