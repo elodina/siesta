@@ -74,7 +74,7 @@ func (hp *HashPartitioner) Partition(record *ProducerRecord, partitions []int32)
 		return hp.random.Partition(record, partitions)
 	} else {
 		hp.hasher.Reset()
-		_, err := hp.hasher.Write(record.Key)
+		_, err := hp.hasher.Write(record.encodedKey)
 		if err != nil {
 			return -1, err
 		}
@@ -84,7 +84,7 @@ func (hp *HashPartitioner) Partition(record *ProducerRecord, partitions []int32)
 			hash = -hash
 		}
 
-		return hash % len(partitions), nil
+		return hash % int32(len(partitions)), nil
 	}
 }
 
@@ -99,7 +99,7 @@ func NewRandomPartitioner() *RandomPartitioner {
 }
 
 func (rp *RandomPartitioner) Partition(record *ProducerRecord, partitions []int32) (int32, error) {
-	return rp.random.Int31n(len(partitions))
+	return rp.random.Int31n(int32(len(partitions))), nil
 }
 
 type RecordAccumulator struct {
@@ -113,7 +113,7 @@ type RecordAccumulator struct {
 
 type Producer interface {
 	// Send the given record asynchronously and return a channel which will eventually contain the response information.
-	Send(ProducerRecord) <-chan RecordMetadata
+	Send(*ProducerRecord) <-chan *RecordMetadata
 
 	// Flush any accumulated records from the producer. Blocks until all sends are complete.
 	Flush()
