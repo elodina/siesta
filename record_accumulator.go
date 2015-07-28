@@ -76,7 +76,10 @@ func (ra *RecordAccumulator) watcher(topic string, partition int32) {
 }
 
 func (ra *RecordAccumulator) toFlush(topic string, partition int32) {
-	ra.flushed[topic][partition] <- true
+	select {
+	case ra.flushed[topic][partition] <- true:
+	default:
+	}
 }
 
 func (ra *RecordAccumulator) flush(topic string, partition int32) {
