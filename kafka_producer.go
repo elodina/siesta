@@ -192,6 +192,10 @@ func (kp *KafkaProducer) Metrics() map[string]Metric {
 }
 
 // TODO return channel and remove timeout
-func (kp *KafkaProducer) Close(timeout int) {
-	kp.accumulator.close()
+func (kp *KafkaProducer) Close(timeout time.Duration) {
+	closed := kp.accumulator.close()
+	select {
+	case <-closed:
+	case <-time.After(timeout):
+	}
 }

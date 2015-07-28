@@ -47,7 +47,7 @@ func TestProducerSend1(t *testing.T) {
 		t.Error("Could not get produce response within 5 seconds")
 	}
 
-	producer.Close(1000)
+	producer.Close(1 * time.Second)
 }
 
 func TestProducerSend1000(t *testing.T) {
@@ -81,7 +81,7 @@ func TestProducerSend1000(t *testing.T) {
 		}
 	}
 
-	producer.Close(1000)
+	producer.Close(1 * time.Second)
 }
 
 func TestProducerRequiredAcks0(t *testing.T) {
@@ -115,7 +115,7 @@ func TestProducerRequiredAcks0(t *testing.T) {
 		}
 	}
 
-	producer.Close(1000)
+	producer.Close(1 * time.Second)
 }
 
 func TestProducerFlushTimeout(t *testing.T) {
@@ -149,5 +149,5 @@ func TestProducerFlushTimeout(t *testing.T) {
 		}
 	}
 
-	producer.Close(1000)
+	producer.Close(1 * time.Second)
 }
