@@ -6,8 +6,8 @@ type RecordAccumulatorConfig struct {
 	batchSize         int
 	totalMemorySize   int
 	compressionType   string
-	lingerMs          int64
-	retryBackoffMs    int64
+	linger            time.Duration
+	retryBackoff      time.Duration
 	blockOnBufferFull bool
 	metrics           map[string]Metric
 	time              time.Time

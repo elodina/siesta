@@ -28,14 +28,14 @@ type RecordMetadata struct {
 type PartitionInfo struct{}
 type Metric struct{}
 type ProducerConfig struct {
-	MetadataFetchTimeout int64
-	MetadataExpireMs     int64
+	MetadataFetchTimeout time.Duration
+	MetadataExpire       time.Duration
 	MaxRequestSize       int
 	TotalMemorySize      int
 	CompressionType      string
 	BatchSize            int
-	LingerMs             int64
-	RetryBackoffMs       int64
+	Linger               time.Duration
+	RetryBackoff         time.Duration
 	BlockOnBufferFull    bool
 
 	ClientID        string
@@ -90,21 +90,17 @@ type Producer interface {
 }
 
 type KafkaProducer struct {
-	config                 *ProducerConfig
-	time                   time.Time
-	partitioner            Partitioner
-	keySerializer          Serializer
-	valueSerializer        Serializer
-	metadataFetchTimeoutMs int64
-	metadata               *Metadata
-	maxRequestSize         int
-	totalMemorySize        int
-	metrics                map[string]Metric
-	compressionType        string
-	accumulator            *RecordAccumulator
-	metricTags             map[string]string
-	connector              Connector
-	metadataCache          *topicMetadataCache
+	config          *ProducerConfig
+	time            time.Time
+	partitioner     Partitioner
+	keySerializer   Serializer
+	valueSerializer Serializer
+	metadata        *Metadata
+	metrics         map[string]Metric
+	accumulator     *RecordAccumulator
+	metricTags      map[string]string
+	connector       Connector
+	metadataCache   *topicMetadataCache
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
@@ -116,13 +112,9 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	producer.partitioner = NewHashPartitioner()
 	producer.keySerializer = keySerializer
 	producer.valueSerializer = valueSerializer
-	producer.metadataFetchTimeoutMs = config.MetadataFetchTimeout
 	producer.metadata = NewMetadata()
-	producer.maxRequestSize = config.MaxRequestSize
-	producer.totalMemorySize = config.TotalMemorySize
-	producer.compressionType = config.CompressionType
 	producer.connector = connector
-	producer.metadataCache = newTopicMetadataCache(connector, time.Duration(config.MetadataExpireMs)*time.Millisecond) //TODO we should probably accept configs in time.Duration and not like BlaBlaMs
+	producer.metadataCache = newTopicMetadataCache(connector, config.MetadataExpire)
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
@@ -130,9 +122,10 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 
 	accumulatorConfig := &RecordAccumulatorConfig{
 		batchSize:         config.BatchSize,
-		totalMemorySize:   producer.totalMemorySize,
-		compressionType:   producer.compressionType,
-		lingerMs:          config.LingerMs,
+		totalMemorySize:   config.TotalMemorySize,
+		compressionType:   config.CompressionType,
+		linger:            config.Linger,
+		retryBackoff:      config.RetryBackoff,
 		blockOnBufferFull: config.BlockOnBufferFull,
 		metrics:           producer.metrics,
 		time:              producer.time,
