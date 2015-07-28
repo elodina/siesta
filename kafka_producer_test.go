@@ -33,6 +33,7 @@ func TestProducerSend1(t *testing.T) {
 		WriteTimeout:    5 * time.Second,
 		RequiredAcks:    1,
 		AckTimeoutMs:    2000,
+		LingerMs:        1000,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
 	metadataChan := producer.Send(&ProducerRecord{Topic: "siesta", Value: "hello world"})
@@ -59,6 +60,7 @@ func TestProducerSend1000(t *testing.T) {
 		WriteTimeout:    5 * time.Second,
 		RequiredAcks:    1,
 		AckTimeoutMs:    2000,
+		LingerMs:        1000,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
 	metadataChannels := make([]<-chan *RecordMetadata, 0)
