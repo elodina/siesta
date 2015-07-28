@@ -120,7 +120,20 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 		request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
 	}
 	responseChan := nc.selector.Send(leader, request)
-	go listenForResponse(topic, partition, batch, responseChan)
+
+	if nc.requiredAcks > 0 {
+		go listenForResponse(topic, partition, batch, responseChan)
+	} else {
+		// acks = 0 case, just complete all requests
+		for _, record := range batch {
+			record.metadataChan <- &RecordMetadata{
+				Offset:    -1,
+				Topic:     topic,
+				Partition: partition,
+				Error:     ErrNoError,
+			}
+		}
+	}
 }
 
 func listenForResponse(topic string, partition int32, batch []*ProducerRecord, responseChan <-chan *rawResponseAndError) {
