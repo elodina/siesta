@@ -91,6 +91,7 @@ func TestProducerRequiredAcks0(t *testing.T) {
 		ReadTimeout:     5 * time.Second,
 		WriteTimeout:    5 * time.Second,
 		RequiredAcks:    0,
+		Linger:          1 * time.Second,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
 	metadataChannels := make([]<-chan *RecordMetadata, 0)
