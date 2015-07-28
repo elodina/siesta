@@ -46,6 +46,8 @@ func TestProducerSend1(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Error("Could not get produce response within 5 seconds")
 	}
+
+	producer.Close(1000)
 }
 
 func TestProducerSend1000(t *testing.T) {
@@ -78,6 +80,8 @@ func TestProducerSend1000(t *testing.T) {
 			t.Fatal("Could not get produce response within 5 seconds")
 		}
 	}
+
+	producer.Close(1000)
 }
 
 func TestProducerRequiredAcks0(t *testing.T) {
@@ -110,4 +114,40 @@ func TestProducerRequiredAcks0(t *testing.T) {
 			t.Fatal("Could not get produce response within 5 seconds")
 		}
 	}
+
+	producer.Close(1000)
+}
+
+func TestProducerFlushTimeout(t *testing.T) {
+	connector := testConnector(t)
+	producerConfig := &ProducerConfig{
+		BatchSize:       1000,
+		ClientID:        "siesta",
+		MaxRequests:     10,
+		SendRoutines:    10,
+		ReceiveRoutines: 10,
+		ReadTimeout:     5 * time.Second,
+		WriteTimeout:    5 * time.Second,
+		RequiredAcks:    0,
+		Linger:          1 * time.Second,
+	}
+	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
+	metadataChannels := make([]<-chan *RecordMetadata, 0)
+	for i := 0; i < 100; i++ {
+		metadataChannels = append(metadataChannels, producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)}))
+	}
+
+	for _, metadataChan := range metadataChannels {
+		select {
+		case metadata := <-metadataChan:
+			assert(t, metadata.Error, ErrNoError)
+			assert(t, metadata.Topic, "siesta")
+			assert(t, metadata.Partition, int32(0))
+			assert(t, metadata.Offset, int64(-1))
+		case <-time.After(5 * time.Second):
+			t.Fatal("Could not get produce response within 5 seconds")
+		}
+	}
+
+	producer.Close(1000)
 }

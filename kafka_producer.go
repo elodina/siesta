@@ -194,8 +194,8 @@ func (kp *KafkaProducer) Metrics() map[string]Metric {
 	return make(map[string]Metric)
 }
 
+// TODO return channel and remove timeout
 func (kp *KafkaProducer) Close(timeout int) {
-
 	kp.accumulator.close()
 }
 
