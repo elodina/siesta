@@ -81,6 +81,7 @@ type NetworkClient struct {
 	selector                *Selector
 	connections             map[string]*net.TCPConn
 	requiredAcks            int
+	ackTimeoutMs            int32
 }
 
 type NetworkClientConfig struct {
@@ -90,6 +91,7 @@ func NewNetworkClient(config NetworkClientConfig, connector Connector, producerC
 	client := &NetworkClient{}
 	client.connector = connector
 	client.requiredAcks = producerConfig.RequiredAcks
+	client.ackTimeoutMs = producerConfig.AckTimeoutMs
 	selectorConfig := NewSelectorConfig(producerConfig)
 	client.selector = NewSelector(selectorConfig)
 	client.connectionStates = NewClusterConnectionStates()
@@ -115,7 +117,7 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 
 	request := new(ProduceRequest)
 	request.RequiredAcks = int16(nc.requiredAcks)
-	request.AckTimeoutMs = 2000 //TODO
+	request.AckTimeoutMs = nc.ackTimeoutMs
 	for _, record := range batch {
 		request.AddMessage(record.Topic, record.partition, &Message{Key: record.encodedKey, Value: record.encodedValue})
 	}

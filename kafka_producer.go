@@ -45,6 +45,7 @@ type ProducerConfig struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	RequiredAcks    int
+	AckTimeoutMs    int32
 }
 
 type Serializer func(interface{}) ([]byte, error)
@@ -103,7 +104,6 @@ type KafkaProducer struct {
 	accumulator            *RecordAccumulator
 	metricTags             map[string]string
 	connector              Connector
-	topicMetadataLock      sync.Mutex
 	metadataCache          *topicMetadataCache
 }
 
