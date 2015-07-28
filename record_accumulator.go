@@ -69,7 +69,7 @@ func (ra *RecordAccumulator) createBatch(topic string, partition int32) {
 func (ra *RecordAccumulator) watcher(topic string, partition int32) {
 	select {
 	case <-ra.flushed[topic][partition]:
-	case <-time.After(time.Millisecond * time.Duration(ra.config.lingerMs)):
+	case <-time.After(ra.config.linger):
 		ra.flush(topic, partition)
 	}
 }
