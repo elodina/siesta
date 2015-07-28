@@ -57,7 +57,7 @@ func (ra *RecordAccumulator) sender() {
 
 		ra.batches[record.Topic][record.partition] = partitionBatch
 		if len(partitionBatch) == ra.batchSize {
-			go ra.flushAndNotify(record.Topic, record.partition)
+			go ra.toFlush(record.Topic, record.partition)
 		}
 	}
 }
@@ -69,13 +69,13 @@ func (ra *RecordAccumulator) createBatch(topic string, partition int32) {
 func (ra *RecordAccumulator) watcher(topic string, partition int32) {
 	select {
 	case <-ra.flushed[topic][partition]:
+		ra.flush(topic, partition)
 	case <-time.After(ra.config.linger):
 		ra.flush(topic, partition)
 	}
 }
 
-func (ra *RecordAccumulator) flushAndNotify(topic string, partition int32) {
-	ra.flush(topic, partition)
+func (ra *RecordAccumulator) toFlush(topic string, partition int32) {
 	ra.flushed[topic][partition] <- true
 }
 
