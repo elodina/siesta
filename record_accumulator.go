@@ -29,7 +29,7 @@ func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
 	accumulator := &RecordAccumulator{}
 	accumulator.config = config
 	accumulator.batchSize = config.batchSize
-	accumulator.addChan = make(chan *ProducerRecord, 100)
+	accumulator.addChan = make(chan *ProducerRecord, 100) //TODO config
 	accumulator.batches = make(map[string]map[int32][]*ProducerRecord)
 	accumulator.flushed = make(map[string]map[int32]chan bool)
 	accumulator.networkClient = config.networkClient
