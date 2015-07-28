@@ -141,13 +141,15 @@ func listenForResponse(topic string, partition int32, batch []*ProducerRecord, r
 	}
 
 	status := produceResponse.Status[topic][partition]
+	currentOffset := status.Offset
 	for _, record := range batch {
 		record.metadataChan <- &RecordMetadata{
 			Topic:     topic,
 			Partition: partition,
-			Offset:    status.Offset,
+			Offset:    currentOffset,
 			Error:     status.Error,
 		}
+		currentOffset++
 	}
 }
 
