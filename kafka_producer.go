@@ -99,6 +99,7 @@ type KafkaProducer struct {
 	metricTags      map[string]string
 	connector       Connector
 	metadata        *Metadata
+	RecordsMetadata chan *RecordMetadata
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
@@ -112,6 +113,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	producer.valueSerializer = valueSerializer
 	producer.connector = connector
 	producer.metadata = NetMetadata(connector, config.MetadataExpire)
+	producer.RecordsMetadata = make(chan *RecordMetadata)
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
@@ -136,13 +138,12 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	return producer
 }
 
-func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
-	metadata := make(chan *RecordMetadata, 1)
-	kp.send(record, metadata)
-	return metadata
+func (kp *KafkaProducer) Send(record *ProducerRecord) {
+	kp.send(record)
 }
 
-func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordMetadata) {
+func (kp *KafkaProducer) send(record *ProducerRecord) {
+	metadataChan := kp.RecordsMetadata
 	metadata := new(RecordMetadata)
 
 	serializedKey, err := kp.keySerializer(record.Key)
