@@ -21,58 +21,68 @@ import (
 	"io/ioutil"
 )
 
+// CompressionCodec is a compression codec id used to distinguish various compression types.
 type CompressionCodec int
 
 const (
-	CompressionNone   CompressionCodec = 0
-	CompressionGZip   CompressionCodec = 1
+	// CompressionNone is a compression codec id for uncompressed data.
+	CompressionNone CompressionCodec = 0
+
+	// CompressionGZIP is a compression codec id for GZIP compression.
+	CompressionGZIP CompressionCodec = 1
+
+	// CompressionSnappy is a compression codec id for Snappy compression.
 	CompressionSnappy CompressionCodec = 2
-	CompressionLZ4    CompressionCodec = 3
+
+	// CompressionLZ4 is a compression codec id for LZ4 compression.
+	CompressionLZ4 CompressionCodec = 3
 )
 
 const compressionCodecMask int8 = 3
 
+// MessageAndOffset is a single message or a message set (if it is compressed) with its offset value.
 type MessageAndOffset struct {
 	Offset  int64
-	Message *MessageData
+	Message *Message
 }
 
-func (this *MessageAndOffset) Read(decoder Decoder) *DecodingError {
+func (mo *MessageAndOffset) Read(decoder Decoder) *DecodingError {
 	offset, err := decoder.GetInt64()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageAndOffsetOffset)
+		return NewDecodingError(err, reasonInvalidMessageAndOffsetOffset)
 	}
-	this.Offset = offset
+	mo.Offset = offset
 
 	_, err = decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageLength)
+		return NewDecodingError(err, reasonInvalidMessageLength)
 	}
 
-	message := new(MessageData)
+	message := new(Message)
 	decodingErr := message.Read(decoder)
 	if decodingErr != nil {
 		return decodingErr
 	}
-	this.Message = message
+	mo.Message = message
 
 	return nil
 }
 
-func (this *MessageAndOffset) Write(encoder Encoder) {
-	encoder.WriteInt64(this.Offset)
+func (mo *MessageAndOffset) Write(encoder Encoder) {
+	encoder.WriteInt64(mo.Offset)
 	encoder.Reserve(&LengthSlice{})
-	this.Message.Write(encoder)
+	mo.Message.Write(encoder)
 	encoder.UpdateReserved()
 }
 
+// ReadMessageSet decodes a nested message set if the MessageAndOffset is compressed.
 func ReadMessageSet(decoder Decoder) ([]*MessageAndOffset, *DecodingError) {
-	messages := make([]*MessageAndOffset, 0)
+	var messages []*MessageAndOffset
 	for decoder.Remaining() > 0 {
 		messageAndOffset := new(MessageAndOffset)
 		err := messageAndOffset.Read(decoder)
 		if err != nil {
-			if err.Error() != EOF {
+			if err.Error() != ErrEOF {
 				return nil, err
 			}
 			continue
@@ -83,7 +93,8 @@ func ReadMessageSet(decoder Decoder) ([]*MessageAndOffset, *DecodingError) {
 	return messages, nil
 }
 
-type MessageData struct {
+// Message contains a single message and its metadata or a nested message set if compression is used.
+type Message struct {
 	Crc        int32
 	MagicByte  int8
 	Attributes int8
@@ -93,58 +104,58 @@ type MessageData struct {
 	Nested []*MessageAndOffset
 }
 
-func (this *MessageData) Read(decoder Decoder) *DecodingError {
+func (md *Message) Read(decoder Decoder) *DecodingError {
 	crc, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageCRC)
+		return NewDecodingError(err, reasonInvalidMessageCRC)
 	}
-	this.Crc = crc
+	md.Crc = crc
 
 	magic, err := decoder.GetInt8()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageMagicByte)
+		return NewDecodingError(err, reasonInvalidMessageMagicByte)
 	}
-	this.MagicByte = magic
+	md.MagicByte = magic
 
 	attributes, err := decoder.GetInt8()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageAttributes)
+		return NewDecodingError(err, reasonInvalidMessageAttributes)
 	}
-	this.Attributes = attributes
+	md.Attributes = attributes
 
 	key, err := decoder.GetBytes()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageKey)
+		return NewDecodingError(err, reasonInvalidMessageKey)
 	}
-	this.Key = key
+	md.Key = key
 
 	value, err := decoder.GetBytes()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidMessageValue)
+		return NewDecodingError(err, reasonInvalidMessageValue)
 	}
-	this.Value = value
+	md.Value = value
 
-	compressionCodec := CompressionCodec(this.Attributes & compressionCodecMask)
+	compressionCodec := CompressionCodec(md.Attributes & compressionCodecMask)
 	switch compressionCodec {
 	case CompressionNone:
-	case CompressionGZip:
+	case CompressionGZIP:
 		{
-			if this.Value == nil {
-				return NewDecodingError(NoDataToUncompress, reason_NoGzipData)
+			if md.Value == nil {
+				return NewDecodingError(ErrNoDataToUncompress, reasonNoGzipData)
 			}
-			reader, err := gzip.NewReader(bytes.NewReader(this.Value))
+			reader, err := gzip.NewReader(bytes.NewReader(md.Value))
 			if err != nil {
-				return NewDecodingError(err, reason_MalformedGzipData)
+				return NewDecodingError(err, reasonMalformedGzipData)
 			}
-			if this.Value, err = ioutil.ReadAll(reader); err != nil {
-				return NewDecodingError(err, reason_MalformedGzipData)
+			if md.Value, err = ioutil.ReadAll(reader); err != nil {
+				return NewDecodingError(err, reasonMalformedGzipData)
 			}
 
-			messages, decodingErr := ReadMessageSet(NewBinaryDecoder(this.Value))
+			messages, decodingErr := ReadMessageSet(NewBinaryDecoder(md.Value))
 			if decodingErr != nil {
 				return decodingErr
 			}
-			this.Nested = messages
+			md.Nested = messages
 		}
 	case CompressionSnappy:
 		panic("Not implemented yet")
@@ -156,16 +167,17 @@ func (this *MessageData) Read(decoder Decoder) *DecodingError {
 }
 
 //TODO compress and write if needed
-func (this *MessageData) Write(encoder Encoder) {
+func (md *Message) Write(encoder Encoder) {
 	encoder.Reserve(&CrcSlice{})
-	encoder.WriteInt8(this.MagicByte)
-	encoder.WriteInt8(this.Attributes)
-	encoder.WriteBytes(this.Key)
-	encoder.WriteBytes(this.Value)
+	encoder.WriteInt8(md.MagicByte)
+	encoder.WriteInt8(md.Attributes)
+	encoder.WriteBytes(md.Key)
+	encoder.WriteBytes(md.Value)
 	encoder.UpdateReserved()
 }
 
-type Message struct {
+// MessageAndMetadata is a single message and its metadata.
+type MessageAndMetadata struct {
 	Topic     string
 	Partition int32
 	Offset    int64
@@ -174,13 +186,13 @@ type Message struct {
 }
 
 var (
-	reason_InvalidMessageAndOffsetOffset = "Invalid offset in MessageAndOffset"
-	reason_InvalidMessageLength          = "Invalid Message length"
-	reason_InvalidMessageCRC             = "Invalid Message CRC"
-	reason_InvalidMessageMagicByte       = "Invalid Message magic byte"
-	reason_InvalidMessageAttributes      = "Invalid Message attributes"
-	reason_InvalidMessageKey             = "Invalid Message key"
-	reason_InvalidMessageValue           = "Invalid Message value"
-	reason_NoGzipData                    = "No data to uncompress for GZip encoded message"
-	reason_MalformedGzipData             = "Malformed GZip encoded message"
+	reasonInvalidMessageAndOffsetOffset = "Invalid offset in MessageAndOffset"
+	reasonInvalidMessageLength          = "Invalid Message length"
+	reasonInvalidMessageCRC             = "Invalid Message CRC"
+	reasonInvalidMessageMagicByte       = "Invalid Message magic byte"
+	reasonInvalidMessageAttributes      = "Invalid Message attributes"
+	reasonInvalidMessageKey             = "Invalid Message key"
+	reasonInvalidMessageValue           = "Invalid Message value"
+	reasonNoGzipData                    = "No data to uncompress for GZip encoded message"
+	reasonMalformedGzipData             = "Malformed GZip encoded message"
 )

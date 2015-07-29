@@ -15,64 +15,69 @@ limitations under the License. */
 
 package siesta
 
+// ConsumerMetadataRequest is used to discover the current offset coordinator to issue its offset commit and fetch requests.
 type ConsumerMetadataRequest struct {
-	ConsumerGroup string
+	Group string
 }
 
+// NewConsumerMetadataRequest creates a new ConsumerMetadataRequest for a given consumer group.
 func NewConsumerMetadataRequest(group string) *ConsumerMetadataRequest {
-	return &ConsumerMetadataRequest{ConsumerGroup: group}
+	return &ConsumerMetadataRequest{Group: group}
 }
 
-func (this *ConsumerMetadataRequest) Key() int16 {
+// Key returns the Kafka API key for ConsumerMetadataRequest.
+func (cmr *ConsumerMetadataRequest) Key() int16 {
 	return 10
 }
 
-func (this *ConsumerMetadataRequest) Version() int16 {
+// Version returns the Kafka request version for backwards compatibility.
+func (cmr *ConsumerMetadataRequest) Version() int16 {
 	return 0
 }
 
-func (this *ConsumerMetadataRequest) Write(encoder Encoder) {
-	encoder.WriteString(this.ConsumerGroup)
+// Write writes the ConsumerMetadataRequest to the given Encoder.
+func (cmr *ConsumerMetadataRequest) Write(encoder Encoder) {
+	encoder.WriteString(cmr.Group)
 }
 
+// ConsumerMetadataResponse contains information about the current offset coordinator and error if it occurred.
 type ConsumerMetadataResponse struct {
-	Error           error
-	CoordinatorId   int32
-	CoordinatorHost string
-	CoordinatorPort int32
+	Error       error
+	Coordinator *Broker
 }
 
-func (this *ConsumerMetadataResponse) Read(decoder Decoder) *DecodingError {
+func (cmr *ConsumerMetadataResponse) Read(decoder Decoder) *DecodingError {
 	errCode, err := decoder.GetInt16()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidConsumerMetadataErrorCode)
+		return NewDecodingError(err, reasonInvalidConsumerMetadataErrorCode)
 	}
-	this.Error = BrokerErrors[errCode]
+	cmr.Error = BrokerErrors[errCode]
 
-	coordId, err := decoder.GetInt32()
+	cmr.Coordinator = new(Broker)
+	coordID, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidConsumerMetadataCoordinatorId)
+		return NewDecodingError(err, reasonInvalidConsumerMetadataCoordinatorID)
 	}
-	this.CoordinatorId = coordId
+	cmr.Coordinator.ID = coordID
 
 	coordHost, err := decoder.GetString()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidConsumerMetadataCoordinatorHost)
+		return NewDecodingError(err, reasonInvalidConsumerMetadataCoordinatorHost)
 	}
-	this.CoordinatorHost = coordHost
+	cmr.Coordinator.Host = coordHost
 
 	coordPort, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidConsumerMetadataCoordinatorPort)
+		return NewDecodingError(err, reasonInvalidConsumerMetadataCoordinatorPort)
 	}
-	this.CoordinatorPort = coordPort
+	cmr.Coordinator.Port = coordPort
 
 	return nil
 }
 
-var (
-	reason_InvalidConsumerMetadataErrorCode       = "Invalid error code in consumer metadata"
-	reason_InvalidConsumerMetadataCoordinatorId   = "Invalid coordinator id in consumer metadata"
-	reason_InvalidConsumerMetadataCoordinatorHost = "Invalid coordinator host in consumer metadata"
-	reason_InvalidConsumerMetadataCoordinatorPort = "Invalid coordinator port in consumer metadata"
+const (
+	reasonInvalidConsumerMetadataErrorCode       = "Invalid error code in consumer metadata"
+	reasonInvalidConsumerMetadataCoordinatorID   = "Invalid coordinator id in consumer metadata"
+	reasonInvalidConsumerMetadataCoordinatorHost = "Invalid coordinator host in consumer metadata"
+	reasonInvalidConsumerMetadataCoordinatorPort = "Invalid coordinator port in consumer metadata"
 )

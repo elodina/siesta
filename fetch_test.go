@@ -46,13 +46,13 @@ func TestFetchRequest(t *testing.T) {
 	testRequest(t, emptyFetchRequest, emptyFetchRequestBytes)
 
 	singleFetchRequest := new(FetchRequest)
-	singleFetchRequest.MaxWaitTime = int32(1000)
+	singleFetchRequest.MaxWait = int32(1000)
 	singleFetchRequest.MinBytes = int32(4)
 	singleFetchRequest.AddFetch("logs", 1, 123456789, 1024)
 	testRequest(t, singleFetchRequest, singleFetchRequestBytes)
 
 	multipleFetchRequest := new(FetchRequest)
-	multipleFetchRequest.MaxWaitTime = int32(2000)
+	multipleFetchRequest.MaxWait = int32(2000)
 	multipleFetchRequest.MinBytes = int32(8)
 	multipleFetchRequest.AddFetch("logs1", 2, 987654321, 2048)
 	multipleFetchRequest.AddFetch("logs1", 0, 11111111111, 4096)
@@ -67,13 +67,13 @@ func TestFetchResponse(t *testing.T) {
 	decode(t, singleFetchResponse, singleFetchResponseBytes)
 	testGoodFetchResponse(t, singleFetchResponse)
 
-	decodeErr(t, new(FetchResponse), invalidTopicsLengthFetchResponseBytes, NewDecodingError(EOF, reason_InvalidBlocksLength))
-	decodeErr(t, new(FetchResponse), invalidTopicFetchResponseBytes, NewDecodingError(EOF, reason_InvalidBlockTopic))
-	decodeErr(t, new(FetchResponse), invalidPartitionsLengthFetchBytes, NewDecodingError(EOF, reason_InvalidFetchResponseDataLength))
-	decodeErr(t, new(FetchResponse), invalidPartitionFetchBytes, NewDecodingError(EOF, reason_InvalidFetchResponseDataPartition))
-	decodeErr(t, new(FetchResponse), invalidErrorCodeFetchBytes, NewDecodingError(EOF, reason_InvalidFetchResponseDataErrorCode))
-	decodeErr(t, new(FetchResponse), invalidHightwaterMarkOffsetFetchResponseBytes, NewDecodingError(EOF, reason_InvalidFetchResponseDataHighwaterMarkOffset))
-	decodeErr(t, new(FetchResponse), invalidMessageSetSizeFetchResponseBytes, NewDecodingError(EOF, reason_InvalidMessageSetLength))
+	decodeErr(t, new(FetchResponse), invalidTopicsLengthFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBlocksLength))
+	decodeErr(t, new(FetchResponse), invalidTopicFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidBlockTopic))
+	decodeErr(t, new(FetchResponse), invalidPartitionsLengthFetchBytes, NewDecodingError(ErrEOF, reasonInvalidFetchResponseDataLength))
+	decodeErr(t, new(FetchResponse), invalidPartitionFetchBytes, NewDecodingError(ErrEOF, reasonInvalidFetchResponseDataPartition))
+	decodeErr(t, new(FetchResponse), invalidErrorCodeFetchBytes, NewDecodingError(ErrEOF, reasonInvalidFetchResponseDataErrorCode))
+	decodeErr(t, new(FetchResponse), invalidHightwaterMarkOffsetFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidFetchResponseDataHighwaterMarkOffset))
+	decodeErr(t, new(FetchResponse), invalidMessageSetSizeFetchResponseBytes, NewDecodingError(ErrEOF, reasonInvalidMessageSetLength))
 
 	// partially cut fetch responses should be good as well and get as much data as possible
 	cutFetchResponse := new(FetchResponse)
@@ -106,11 +106,11 @@ func TestFetchResponse(t *testing.T) {
 }
 
 func testGoodFetchResponse(t *testing.T, response *FetchResponse) {
-	partitionData, exists := response.Blocks["logs"]
+	partitionData, exists := response.Data["logs"]
 	assertFatal(t, exists, true)
 	data, exists := partitionData[1]
 	assertFatal(t, exists, true)
-	assert(t, data.Error, NoError)
+	assert(t, data.Error, ErrNoError)
 	assert(t, data.HighwaterMarkOffset, int64(1000))
 	assertFatal(t, len(data.Messages), 1)
 	messageAndOffset := data.Messages[0]

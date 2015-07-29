@@ -47,37 +47,37 @@ func newConnectionPool(connectStr string, size int, keepAlive bool, keepAlivePer
 	return pool
 }
 
-func (this *connectionPool) Borrow() (conn *net.TCPConn, err error) {
-	inLock(&this.lock, func() {
-		for this.conns >= this.size && len(this.connections) == 0 {
-			this.connReleasedCond.Wait()
+func (cp *connectionPool) Borrow() (conn *net.TCPConn, err error) {
+	inLock(&cp.lock, func() {
+		for cp.conns >= cp.size && len(cp.connections) == 0 {
+			cp.connReleasedCond.Wait()
 		}
 
-		if len(this.connections) > 0 {
-			conn = this.connections[0]
-			this.connections = this.connections[1:]
+		if len(cp.connections) > 0 {
+			conn = cp.connections[0]
+			cp.connections = cp.connections[1:]
 		} else {
-			conn, err = this.connect()
+			conn, err = cp.connect()
 			if err != nil {
 				return
 			}
-			this.conns++
+			cp.conns++
 		}
 	})
 	return conn, err
 }
 
-func (this *connectionPool) Return(conn *net.TCPConn) {
-	inLock(&this.lock, func() {
-		if len(this.connections) < this.conns {
-			this.connections = append(this.connections, conn)
-			this.connReleasedCond.Broadcast()
+func (cp *connectionPool) Return(conn *net.TCPConn) {
+	inLock(&cp.lock, func() {
+		if len(cp.connections) < cp.conns {
+			cp.connections = append(cp.connections, conn)
+			cp.connReleasedCond.Broadcast()
 		}
 	})
 }
 
-func (this *connectionPool) connect() (*net.TCPConn, error) {
-	addr, err := net.ResolveTCPAddr("tcp", this.connectStr)
+func (cp *connectionPool) connect() (*net.TCPConn, error) {
+	addr, err := net.ResolveTCPAddr("tcp", cp.connectStr)
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +86,9 @@ func (this *connectionPool) connect() (*net.TCPConn, error) {
 		return nil, err
 	}
 
-	if this.keepAlive {
-		conn.SetKeepAlive(this.keepAlive)
-		conn.SetKeepAlivePeriod(this.keepAlivePeriod)
+	if cp.keepAlive {
+		conn.SetKeepAlive(cp.keepAlive)
+		conn.SetKeepAlivePeriod(cp.keepAlivePeriod)
 	}
 
 	return conn, nil

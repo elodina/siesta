@@ -20,7 +20,7 @@ import (
 	"hash/crc32"
 )
 
-// Decoder is able to encode actual data into a Kafka wire protocol byte sequence.
+// Encoder is able to encode actual data into a Kafka wire protocol byte sequence.
 type Encoder interface {
 	// Writes an int8 to this encoder.
 	WriteInt8(int8)
@@ -60,7 +60,7 @@ type BinaryEncoder struct {
 	stack []UpdatableSlice
 }
 
-// Creates a new BinaryEncoder that will write into a given []byte.
+// NewBinaryEncoder creates a new BinaryEncoder that will write into a given []byte.
 func NewBinaryEncoder(buffer []byte) *BinaryEncoder {
 	return &BinaryEncoder{
 		buffer: buffer,
@@ -68,63 +68,63 @@ func NewBinaryEncoder(buffer []byte) *BinaryEncoder {
 	}
 }
 
-// Writes an int8 to this encoder.
-func (this *BinaryEncoder) WriteInt8(value int8) {
-	this.buffer[this.pos] = byte(value)
-	this.pos += 1
+// WriteInt8 writes an int8 to this encoder.
+func (be *BinaryEncoder) WriteInt8(value int8) {
+	be.buffer[be.pos] = byte(value)
+	be.pos++
 }
 
-// Writes an int16 to this encoder.
-func (this *BinaryEncoder) WriteInt16(value int16) {
-	binary.BigEndian.PutUint16(this.buffer[this.pos:], uint16(value))
-	this.pos += 2
+// WriteInt16 writes an int16 to this encoder.
+func (be *BinaryEncoder) WriteInt16(value int16) {
+	binary.BigEndian.PutUint16(be.buffer[be.pos:], uint16(value))
+	be.pos += 2
 }
 
-// Writes an int32 to this encoder.
-func (this *BinaryEncoder) WriteInt32(value int32) {
-	binary.BigEndian.PutUint32(this.buffer[this.pos:], uint32(value))
-	this.pos += 4
+// WriteInt32 writes an int32 to this encoder.
+func (be *BinaryEncoder) WriteInt32(value int32) {
+	binary.BigEndian.PutUint32(be.buffer[be.pos:], uint32(value))
+	be.pos += 4
 }
 
-// Writes an int64 to this encoder.
-func (this *BinaryEncoder) WriteInt64(value int64) {
-	binary.BigEndian.PutUint64(this.buffer[this.pos:], uint64(value))
-	this.pos += 8
+// WriteInt64 writes an int64 to this encoder.
+func (be *BinaryEncoder) WriteInt64(value int64) {
+	binary.BigEndian.PutUint64(be.buffer[be.pos:], uint64(value))
+	be.pos += 8
 }
 
-// Writes a string to this encoder.
-func (this *BinaryEncoder) WriteString(value string) {
-	this.WriteInt16(int16(len(value)))
-	copy(this.buffer[this.pos:], value)
-	this.pos += len(value)
+// WriteString writes a string to this encoder.
+func (be *BinaryEncoder) WriteString(value string) {
+	be.WriteInt16(int16(len(value)))
+	copy(be.buffer[be.pos:], value)
+	be.pos += len(value)
 }
 
-// Writes a []string to this encoder.
-func (this *BinaryEncoder) WriteBytes(value []byte) {
-	this.WriteInt32(int32(len(value)))
-	copy(this.buffer[this.pos:], value)
-	this.pos += len(value)
+// WriteBytes writes a []byte to this encoder.
+func (be *BinaryEncoder) WriteBytes(value []byte) {
+	be.WriteInt32(int32(len(value)))
+	copy(be.buffer[be.pos:], value)
+	be.pos += len(value)
 }
 
-// Returns the size in bytes written to this encoder.
-func (this *BinaryEncoder) Size() int32 {
-	return int32(len(this.buffer))
+// Size returns the size in bytes written to this encoder.
+func (be *BinaryEncoder) Size() int32 {
+	return int32(len(be.buffer))
 }
 
-// Reserves a place for an updatable slice.
-func (this *BinaryEncoder) Reserve(slice UpdatableSlice) {
-	slice.SetPosition(this.pos)
-	this.stack = append(this.stack, slice)
-	this.pos += slice.GetReserveLength()
+// Reserve reserves a place for an updatable slice.
+func (be *BinaryEncoder) Reserve(slice UpdatableSlice) {
+	slice.SetPosition(be.pos)
+	be.stack = append(be.stack, slice)
+	be.pos += slice.GetReserveLength()
 }
 
-// Tells the last reserved slice to be updated with new data.
-func (this *BinaryEncoder) UpdateReserved() {
-	stackLength := len(this.stack) - 1
-	slice := this.stack[stackLength]
-	this.stack = this.stack[:stackLength]
+// UpdateReserved tells the last reserved slice to be updated with new data.
+func (be *BinaryEncoder) UpdateReserved() {
+	stackLength := len(be.stack) - 1
+	slice := be.stack[stackLength]
+	be.stack = be.stack[:stackLength]
 
-	slice.Update(this.buffer[slice.GetPosition():this.pos])
+	slice.Update(be.buffer[slice.GetPosition():be.pos])
 }
 
 // SizingEncoder is used to determine the size for []byte that will hold the actual encoded data.
@@ -133,55 +133,55 @@ type SizingEncoder struct {
 	size int
 }
 
-// Creates a new SizingEncoder
+// NewSizingEncoder creates a new SizingEncoder
 func NewSizingEncoder() *SizingEncoder {
 	return &SizingEncoder{}
 }
 
-// Writes an int8 to this encoder.
-func (this *SizingEncoder) WriteInt8(int8) {
-	this.size += 1
+// WriteInt8 writes an int8 to this encoder.
+func (se *SizingEncoder) WriteInt8(int8) {
+	se.size++
 }
 
-// Writes an int16 to this encoder.
-func (this *SizingEncoder) WriteInt16(int16) {
-	this.size += 2
+// WriteInt16 writes an int16 to this encoder.
+func (se *SizingEncoder) WriteInt16(int16) {
+	se.size += 2
 }
 
-// Writes an int32 to this encoder.
-func (this *SizingEncoder) WriteInt32(int32) {
-	this.size += 4
+// WriteInt32 writes an int32 to this encoder.
+func (se *SizingEncoder) WriteInt32(int32) {
+	se.size += 4
 }
 
-// Writes an int64 to this encoder.
-func (this *SizingEncoder) WriteInt64(int64) {
-	this.size += 8
+// WriteInt64 writes an int64 to this encoder.
+func (se *SizingEncoder) WriteInt64(int64) {
+	se.size += 8
 }
 
-// Writes a string to this encoder.
-func (this *SizingEncoder) WriteString(value string) {
-	this.WriteInt16(int16(len(value)))
-	this.size += len(value)
+// WriteString writes a string to this encoder.
+func (se *SizingEncoder) WriteString(value string) {
+	se.WriteInt16(int16(len(value)))
+	se.size += len(value)
 }
 
-// Writes a []byte to this encoder.
-func (this *SizingEncoder) WriteBytes(value []byte) {
-	this.WriteInt32(int32(len(value)))
-	this.size += len(value)
+// WriteBytes writes a []byte to this encoder.
+func (se *SizingEncoder) WriteBytes(value []byte) {
+	se.WriteInt32(int32(len(value)))
+	se.size += len(value)
 }
 
-// Returns the size in bytes written to this encoder.
-func (this *SizingEncoder) Size() int32 {
-	return int32(this.size)
+// Size returns the size in bytes written to this encoder.
+func (se *SizingEncoder) Size() int32 {
+	return int32(se.size)
 }
 
-// Reserves a place for an updatable slice.
-func (this *SizingEncoder) Reserve(slice UpdatableSlice) {
-	this.size += slice.GetReserveLength()
+// Reserve reserves a place for an updatable slice.
+func (se *SizingEncoder) Reserve(slice UpdatableSlice) {
+	se.size += slice.GetReserveLength()
 }
 
-// Tells the last reserved slice to be updated with new data.
-func (this *SizingEncoder) UpdateReserved() {
+// UpdateReserved tells the last reserved slice to be updated with new data.
+func (se *SizingEncoder) UpdateReserved() {
 	//do nothing
 }
 
@@ -206,24 +206,24 @@ type LengthSlice struct {
 	slice []byte
 }
 
-// Returns the length to reserve for this slice.
-func (this *LengthSlice) GetReserveLength() int {
+// GetReserveLength returns the length to reserve for this slice.
+func (ls *LengthSlice) GetReserveLength() int {
 	return 4
 }
 
-// Set the current position within the encoder to be updated later.
-func (this *LengthSlice) SetPosition(pos int) {
-	this.pos = pos
+// SetPosition sets the current position within the encoder to be updated later.
+func (ls *LengthSlice) SetPosition(pos int) {
+	ls.pos = pos
 }
 
-// Get the position within the encoder to be updated later.
-func (this *LengthSlice) GetPosition() int {
-	return this.pos
+// GetPosition gets the position within the encoder to be updated later.
+func (ls *LengthSlice) GetPosition() int {
+	return ls.pos
 }
 
 // Update this slice. At this point all necessary data should be written to encoder.
-func (this *LengthSlice) Update(slice []byte) {
-	binary.BigEndian.PutUint32(slice, uint32(len(slice)-this.GetReserveLength()))
+func (ls *LengthSlice) Update(slice []byte) {
+	binary.BigEndian.PutUint32(slice, uint32(len(slice)-ls.GetReserveLength()))
 }
 
 // CrcSlice is used to calculate the CRC32 value of the message.
@@ -231,24 +231,24 @@ type CrcSlice struct {
 	pos int
 }
 
-// Returns the length to reserve for this slice.
-func (this *CrcSlice) GetReserveLength() int {
+// GetReserveLength returns the length to reserve for this slice.
+func (cs *CrcSlice) GetReserveLength() int {
 	return 4
 }
 
-// Set the current position within the encoder to be updated later.
-func (this *CrcSlice) SetPosition(pos int) {
-	this.pos = pos
+// SetPosition sets the current position within the encoder to be updated later.
+func (cs *CrcSlice) SetPosition(pos int) {
+	cs.pos = pos
+}
+
+// GetPosition gets the position within the encoder to be updated later.
+func (cs *CrcSlice) GetPosition() int {
+	return cs.pos
 }
 
 // Update this slice. At this point all necessary data should be written to encoder.
-func (this *CrcSlice) GetPosition() int {
-	return this.pos
-}
-
-// Update this slice. At this point all necessary data should be written to encoder.
-func (this *CrcSlice) Update(slice []byte) {
+func (cs *CrcSlice) Update(slice []byte) {
 	//TODO https://github.com/Shopify/sarama/issues/255 - maybe port the mentioned CRC algo?
-	crc := crc32.ChecksumIEEE(slice[this.GetReserveLength():])
+	crc := crc32.ChecksumIEEE(slice[cs.GetReserveLength():])
 	binary.BigEndian.PutUint32(slice, crc)
 }

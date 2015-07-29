@@ -26,9 +26,9 @@ import (
 	"time"
 )
 
-var ci bool = os.Getenv("TRAVIS_CI") != ""
-var brokerUp bool = true
-var brokerAddr string = "localhost:9092"
+var ci = os.Getenv("TRAVIS_CI") != ""
+var brokerUp = true
+var brokerAddr = "localhost:9092"
 
 func init() {
 	conn, err := net.Dial("tcp", brokerAddr)
@@ -66,29 +66,29 @@ func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnect
 	assertFatal(t, err, nil)
 
 	assertNot(t, len(metadata.Brokers), 0)
-	assertNot(t, len(metadata.TopicMetadata), 0)
+	assertNot(t, len(metadata.TopicsMetadata), 0)
 	if len(metadata.Brokers) > 1 {
 		t.Skip("Cluster should consist only of one broker for this test to run.")
 	}
 
 	broker := metadata.Brokers[0]
-	assert(t, broker.NodeId, int32(0))
+	assert(t, broker.ID, int32(0))
 	if ci {
 		// this can be asserted on Travis only as we are guaranteed to advertise the broker as localhost
 		assert(t, broker.Host, "localhost")
 	}
 	assert(t, broker.Port, int32(9092))
 
-	topicMetadata := findTopicMetadata(t, metadata.TopicMetadata, topicName)
-	assert(t, topicMetadata.Error, NoError)
-	assert(t, topicMetadata.TopicName, topicName)
-	assertFatal(t, len(topicMetadata.PartitionMetadata), 1)
+	topicMetadata := findTopicMetadata(t, metadata.TopicsMetadata, topicName)
+	assert(t, topicMetadata.Error, ErrNoError)
+	assert(t, topicMetadata.Topic, topicName)
+	assertFatal(t, len(topicMetadata.PartitionsMetadata), 1)
 
-	partitionMetadata := topicMetadata.PartitionMetadata[0]
-	assert(t, partitionMetadata.Error, NoError)
-	assert(t, partitionMetadata.Isr, []int32{0})
+	partitionMetadata := topicMetadata.PartitionsMetadata[0]
+	assert(t, partitionMetadata.Error, ErrNoError)
+	assert(t, partitionMetadata.ISR, []int32{0})
 	assert(t, partitionMetadata.Leader, int32(0))
-	assert(t, partitionMetadata.PartitionId, int32(0))
+	assert(t, partitionMetadata.PartitionID, int32(0))
 	assert(t, partitionMetadata.Replicas, []int32{0})
 }
 
@@ -97,7 +97,7 @@ func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnect
 	targetOffset := rand.Int63()
 
 	offset, err := connector.GetOffset(group, topicName, 0)
-	assertFatal(t, err, UnknownTopicOrPartition)
+	assertFatal(t, err, ErrUnknownTopicOrPartition)
 	assert(t, offset, int64(-1))
 
 	err = connector.CommitOffset(group, topicName, 0, targetOffset)
@@ -110,10 +110,10 @@ func testOffsetStorage(t *testing.T, topicName string, connector *DefaultConnect
 
 func testProduce(t *testing.T, topicName string, numMessages int, connector *DefaultConnector) {
 	produceRequest := new(ProduceRequest)
-	produceRequest.Timeout = 1000
+	produceRequest.AckTimeoutMs = 1000
 	produceRequest.RequiredAcks = 1
 	for i := 0; i < numMessages; i++ {
-		produceRequest.AddMessage(topicName, 0, &MessageData{
+		produceRequest.AddMessage(topicName, 0, &Message{
 			Key:   []byte(fmt.Sprintf("%d", numMessages-i)),
 			Value: []byte(fmt.Sprintf("%d", i)),
 		})
@@ -129,12 +129,12 @@ func testProduce(t *testing.T, topicName string, numMessages int, connector *Def
 	decodingErr := connector.decode(bytes, produceResponse)
 	assertFatal(t, decodingErr, (*DecodingError)(nil))
 
-	topicBlock, exists := produceResponse.Blocks[topicName]
+	topicBlock, exists := produceResponse.Status[topicName]
 	assertFatal(t, exists, true)
 	partitionBlock, exists := topicBlock[int32(0)]
 	assertFatal(t, exists, true)
 
-	assert(t, partitionBlock.Error, NoError)
+	assert(t, partitionBlock.Error, ErrNoError)
 	assert(t, partitionBlock.Offset, int64(0))
 }
 
@@ -156,7 +156,7 @@ func testConsume(t *testing.T, topicName string, numMessages int, connector *Def
 
 func findTopicMetadata(t *testing.T, metadata []*TopicMetadata, topic string) *TopicMetadata {
 	for _, topicMetadata := range metadata {
-		if topicMetadata.TopicName == topic {
+		if topicMetadata.Topic == topic {
 			return topicMetadata
 		}
 	}

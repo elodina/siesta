@@ -19,7 +19,7 @@ import "testing"
 
 func TestRequestWriter(t *testing.T) {
 	request := new(TopicMetadataRequest)
-	writer := NewRequestWriter(1, "", request)
+	writer := NewRequestHeader(1, "", request)
 	size := writer.Size()
 	assert(t, size, int32(4+2+2+4+2+4))
 	bytes := make([]byte, size)

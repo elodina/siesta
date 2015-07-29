@@ -49,63 +49,63 @@ type BinaryDecoder struct {
 	pos int
 }
 
-// Creates a new BinaryDecoder that will decode a given []byte.
+// NewBinaryDecoder creates a new BinaryDecoder that will decode a given []byte.
 func NewBinaryDecoder(raw []byte) *BinaryDecoder {
 	return &BinaryDecoder{
 		raw: raw,
 	}
 }
 
-// Gets an int8 from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetInt8() (int8, error) {
-	if this.Remaining() < 1 {
-		this.pos = len(this.raw)
-		return -1, EOF
+// GetInt8 gets an int8 from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetInt8() (int8, error) {
+	if bd.Remaining() < 1 {
+		bd.pos = len(bd.raw)
+		return -1, ErrEOF
 	}
-	value := int8(this.raw[this.pos])
-	this.pos += 1
+	value := int8(bd.raw[bd.pos])
+	bd.pos++
 	return value, nil
 }
 
-// Gets an int16 from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetInt16() (int16, error) {
-	if this.Remaining() < 2 {
-		this.pos = len(this.raw)
-		return -1, EOF
+// GetInt16 gets an int16 from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetInt16() (int16, error) {
+	if bd.Remaining() < 2 {
+		bd.pos = len(bd.raw)
+		return -1, ErrEOF
 	}
-	value := int16(binary.BigEndian.Uint16(this.raw[this.pos:]))
-	this.pos += 2
+	value := int16(binary.BigEndian.Uint16(bd.raw[bd.pos:]))
+	bd.pos += 2
 	return value, nil
 }
 
-// Gets an int32 from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetInt32() (int32, error) {
-	if this.Remaining() < 4 {
-		this.pos = len(this.raw)
-		return -1, EOF
+// GetInt32 gets an int32 from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetInt32() (int32, error) {
+	if bd.Remaining() < 4 {
+		bd.pos = len(bd.raw)
+		return -1, ErrEOF
 	}
-	value := int32(binary.BigEndian.Uint32(this.raw[this.pos:]))
-	this.pos += 4
+	value := int32(binary.BigEndian.Uint32(bd.raw[bd.pos:]))
+	bd.pos += 4
 	return value, nil
 }
 
-// Gets an int64 from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetInt64() (int64, error) {
-	if this.Remaining() < 8 {
-		this.pos = len(this.raw)
-		return -1, EOF
+// GetInt64 gets an int64 from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetInt64() (int64, error) {
+	if bd.Remaining() < 8 {
+		bd.pos = len(bd.raw)
+		return -1, ErrEOF
 	}
-	value := int64(binary.BigEndian.Uint64(this.raw[this.pos:]))
-	this.pos += 8
+	value := int64(binary.BigEndian.Uint64(bd.raw[bd.pos:]))
+	bd.pos += 8
 	return value, nil
 }
 
-// Gets a []byte from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetBytes() ([]byte, error) {
-	l, err := this.GetInt32()
+// GetBytes gets a []byte from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetBytes() ([]byte, error) {
+	l, err := bd.GetInt32()
 
 	if err != nil || l < -1 {
-		return nil, EOF
+		return nil, ErrEOF
 	}
 
 	length := int(l)
@@ -115,21 +115,21 @@ func (this *BinaryDecoder) GetBytes() ([]byte, error) {
 		return nil, nil
 	case length == 0:
 		return make([]byte, 0), nil
-	case length > this.Remaining():
-		this.pos = len(this.raw)
-		return nil, EOF
+	case length > bd.Remaining():
+		bd.pos = len(bd.raw)
+		return nil, ErrEOF
 	}
-	value := this.raw[this.pos : this.pos+length]
-	this.pos += length
+	value := bd.raw[bd.pos : bd.pos+length]
+	bd.pos += length
 	return value, nil
 }
 
-// Gets a string from this decoder. Returns EOF if end of stream is reached.
-func (this *BinaryDecoder) GetString() (string, error) {
-	l, err := this.GetInt16()
+// GetString gets a string from this decoder. Returns EOF if end of stream is reached.
+func (bd *BinaryDecoder) GetString() (string, error) {
+	l, err := bd.GetInt16()
 
 	if err != nil || l < -1 {
-		return "", EOF
+		return "", ErrEOF
 	}
 
 	length := int(l)
@@ -137,16 +137,16 @@ func (this *BinaryDecoder) GetString() (string, error) {
 	switch {
 	case length < 1:
 		return "", nil
-	case length > this.Remaining():
-		this.pos = len(this.raw)
-		return "", EOF
+	case length > bd.Remaining():
+		bd.pos = len(bd.raw)
+		return "", ErrEOF
 	}
-	value := string(this.raw[this.pos : this.pos+length])
-	this.pos += length
+	value := string(bd.raw[bd.pos : bd.pos+length])
+	bd.pos += length
 	return value, nil
 }
 
-// Tells how many bytes left unread in this decoder.
-func (this *BinaryDecoder) Remaining() int {
-	return len(this.raw) - this.pos
+// Remaining tells how many bytes left unread in this decoder.
+func (bd *BinaryDecoder) Remaining() int {
+	return len(bd.raw) - bd.pos
 }

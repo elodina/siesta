@@ -35,29 +35,29 @@ func TestProduceRequest(t *testing.T) {
 
 	goodProduceRequest := new(ProduceRequest)
 	goodProduceRequest.RequiredAcks = 1
-	goodProduceRequest.Timeout = 2000
-	goodProduceRequest.AddMessage("siesta", 0, &MessageData{Value: []byte("hello world")})
+	goodProduceRequest.AckTimeoutMs = 2000
+	goodProduceRequest.AddMessage("siesta", 0, &Message{Value: []byte("hello world")})
 	testRequest(t, goodProduceRequest, goodProduceRequestBytes)
 }
 
 func TestProduceResponse(t *testing.T) {
 	emptyProduceResponse := new(ProduceResponse)
 	decode(t, emptyProduceResponse, emptyProduceResponseBytes)
-	assert(t, len(emptyProduceResponse.Blocks), 0)
+	assert(t, len(emptyProduceResponse.Status), 0)
 
 	goodProduceResponse := new(ProduceResponse)
 	decode(t, goodProduceResponse, goodProduceResponseBytes)
-	partitionResponse, exists := goodProduceResponse.Blocks["siesta"]
+	partitionResponse, exists := goodProduceResponse.Status["siesta"]
 	assertFatal(t, exists, true)
 	responseData, exists := partitionResponse[0]
 	assertFatal(t, exists, true)
-	assert(t, responseData.Error, NoError)
+	assert(t, responseData.Error, ErrNoError)
 	assert(t, responseData.Offset, int64(41399399))
 
-	decodeErr(t, new(ProduceResponse), invalidTopicsLengthProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProduceTopicsLength))
-	decodeErr(t, new(ProduceResponse), invalidTopicProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProduceTopic))
-	decodeErr(t, new(ProduceResponse), invalidPartitionsLengthProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProducePartitionsLength))
-	decodeErr(t, new(ProduceResponse), invalidPartitionProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProducePartition))
-	decodeErr(t, new(ProduceResponse), invalidErrorCodeProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProduceErrorCode))
-	decodeErr(t, new(ProduceResponse), invalidOffsetProduceResponseBytes, NewDecodingError(EOF, reason_InvalidProduceOffset))
+	decodeErr(t, new(ProduceResponse), invalidTopicsLengthProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProduceTopicsLength))
+	decodeErr(t, new(ProduceResponse), invalidTopicProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProduceTopic))
+	decodeErr(t, new(ProduceResponse), invalidPartitionsLengthProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProducePartitionsLength))
+	decodeErr(t, new(ProduceResponse), invalidPartitionProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProducePartition))
+	decodeErr(t, new(ProduceResponse), invalidErrorCodeProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProduceErrorCode))
+	decodeErr(t, new(ProduceResponse), invalidOffsetProduceResponseBytes, NewDecodingError(ErrEOF, reasonInvalidProduceOffset))
 }

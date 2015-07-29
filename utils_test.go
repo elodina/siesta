@@ -148,7 +148,7 @@ func closeWithin(t *testing.T, timeout time.Duration, connector Connector) {
 		}
 	case <-time.After(timeout):
 		{
-			t.Errorf("Failed to close connector within %d seconds", timeout.Seconds())
+			t.Errorf("Failed to close connector within %s seconds", timeout)
 		}
 	}
 }

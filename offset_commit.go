@@ -15,106 +15,113 @@ limitations under the License. */
 
 package siesta
 
+// OffsetCommitRequest is used to commit offsets for a group/topic/partition.
 type OffsetCommitRequest struct {
-	ConsumerGroup string
-	Offsets       map[string]map[int32]*OffsetAndMetadata
+	GroupID     string
+	RequestInfo map[string]map[int32]*OffsetAndMetadata
 }
 
+// NewOffsetCommitRequest creates a new OffsetCommitRequest for a given consumer group.
 func NewOffsetCommitRequest(group string) *OffsetCommitRequest {
-	return &OffsetCommitRequest{ConsumerGroup: group}
+	return &OffsetCommitRequest{GroupID: group}
 }
 
-func (this *OffsetCommitRequest) Key() int16 {
+// Key returns the Kafka API key for OffsetCommitRequest.
+func (ocr *OffsetCommitRequest) Key() int16 {
 	return 8
 }
 
-func (this *OffsetCommitRequest) Version() int16 {
+// Version returns the Kafka request version for backwards compatibility.
+func (ocr *OffsetCommitRequest) Version() int16 {
 	return 0
 }
 
-func (this *OffsetCommitRequest) Write(encoder Encoder) {
-	encoder.WriteString(this.ConsumerGroup)
-	encoder.WriteInt32(int32(len(this.Offsets)))
+func (ocr *OffsetCommitRequest) Write(encoder Encoder) {
+	encoder.WriteString(ocr.GroupID)
+	encoder.WriteInt32(int32(len(ocr.RequestInfo)))
 
-	for topic, partitionOffsetAndMetadata := range this.Offsets {
+	for topic, partitionOffsetAndMetadata := range ocr.RequestInfo {
 		encoder.WriteString(topic)
 		encoder.WriteInt32(int32(len(partitionOffsetAndMetadata)))
 		for partition, offsetAndMetadata := range partitionOffsetAndMetadata {
 			encoder.WriteInt32(partition)
 			encoder.WriteInt64(offsetAndMetadata.Offset)
-			encoder.WriteInt64(offsetAndMetadata.TimeStamp)
+			encoder.WriteInt64(offsetAndMetadata.Timestamp)
 			encoder.WriteString(offsetAndMetadata.Metadata)
 		}
 	}
 }
 
-func (this *OffsetCommitRequest) AddOffset(topic string, partition int32, offset int64, timestamp int64, metadata string) {
-	if this.Offsets == nil {
-		this.Offsets = make(map[string]map[int32]*OffsetAndMetadata)
+// AddOffset is a convenience method to add an offset for a topic partition.
+func (ocr *OffsetCommitRequest) AddOffset(topic string, partition int32, offset int64, timestamp int64, metadata string) {
+	if ocr.RequestInfo == nil {
+		ocr.RequestInfo = make(map[string]map[int32]*OffsetAndMetadata)
 	}
 
-	partitionOffsetAndMetadata, exists := this.Offsets[topic]
+	partitionOffsetAndMetadata, exists := ocr.RequestInfo[topic]
 	if !exists {
-		this.Offsets[topic] = make(map[int32]*OffsetAndMetadata)
-		partitionOffsetAndMetadata = this.Offsets[topic]
+		ocr.RequestInfo[topic] = make(map[int32]*OffsetAndMetadata)
+		partitionOffsetAndMetadata = ocr.RequestInfo[topic]
 	}
 
-	partitionOffsetAndMetadata[partition] = &OffsetAndMetadata{Offset: offset, TimeStamp: timestamp, Metadata: metadata}
+	partitionOffsetAndMetadata[partition] = &OffsetAndMetadata{Offset: offset, Timestamp: timestamp, Metadata: metadata}
 }
 
+// OffsetCommitResponse contains errors for partitions if they occur.
 type OffsetCommitResponse struct {
-	Offsets map[string]map[int32]error
+	CommitStatus map[string]map[int32]error
 }
 
-func (this *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
-	this.Offsets = make(map[string]map[int32]error)
+func (ocr *OffsetCommitResponse) Read(decoder Decoder) *DecodingError {
+	ocr.CommitStatus = make(map[string]map[int32]error)
 
 	offsetsLength, err := decoder.GetInt32()
 	if err != nil {
-		return NewDecodingError(err, reason_InvalidOffsetsMapLength)
+		return NewDecodingError(err, reasonInvalidOffsetsMapLength)
 	}
 
 	for i := int32(0); i < offsetsLength; i++ {
 		topic, err := decoder.GetString()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidOffsetsTopic)
+			return NewDecodingError(err, reasonInvalidOffsetsTopic)
 		}
-		offsetsForTopic := make(map[int32]error)
-		this.Offsets[topic] = offsetsForTopic
+		errorsForTopic := make(map[int32]error)
+		ocr.CommitStatus[topic] = errorsForTopic
 
 		partitionsLength, err := decoder.GetInt32()
 		if err != nil {
-			return NewDecodingError(err, reason_InvalidOffsetsPartitionsLength)
+			return NewDecodingError(err, reasonInvalidOffsetsPartitionsLength)
 		}
 
 		for j := int32(0); j < partitionsLength; j++ {
 			partition, err := decoder.GetInt32()
 			if err != nil {
-				return NewDecodingError(err, reason_InvalidOffsetsPartition)
+				return NewDecodingError(err, reasonInvalidOffsetsPartition)
 			}
 
 			errCode, err := decoder.GetInt16()
 			if err != nil {
-				return NewDecodingError(err, reason_InvalidOffsetsErrorCode)
+				return NewDecodingError(err, reasonInvalidOffsetsErrorCode)
 			}
 
-			offsetsForTopic[partition] = BrokerErrors[errCode]
+			errorsForTopic[partition] = BrokerErrors[errCode]
 		}
 	}
 
 	return nil
 }
 
+// OffsetAndMetadata contains offset for a partition and optional metadata.
 type OffsetAndMetadata struct {
 	Offset    int64
-	TimeStamp int64
+	Timestamp int64
 	Metadata  string
 }
 
 var (
-	reason_InvalidOffsetsMapLength        = "Invalid length for Offsets field"
-	reason_InvalidOffsetsTopic            = "Invalid topic in OffsetCommitResponse"
-	reason_InvalidOffsetsPartitionsLength = "Invalid length for partitions in OffsetCommitResponse"
-	reason_InvalidOffsetsPartition        = "Invalid partition in OffsetCommitResponse"
-	reason_InvalidOffsetsErrorCode        = "Invalid error code in OffsetCommitResponse"
+	reasonInvalidOffsetsMapLength        = "Invalid length for Offsets field"
+	reasonInvalidOffsetsTopic            = "Invalid topic in OffsetCommitResponse"
+	reasonInvalidOffsetsPartitionsLength = "Invalid length for partitions in OffsetCommitResponse"
+	reasonInvalidOffsetsPartition        = "Invalid partition in OffsetCommitResponse"
+	reasonInvalidOffsetsErrorCode        = "Invalid error code in OffsetCommitResponse"
 )
