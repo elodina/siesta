@@ -21,13 +21,14 @@ type RecordAccumulator struct {
 	batchSize     int
 	batches       map[string]map[int32][]*ProducerRecord
 
-	addChan chan *ProducerRecord
-	flushed map[string]map[int32]chan bool
-	closing chan bool
-	closed  chan bool
+	addChan      chan *ProducerRecord
+	flushed      map[string]map[int32]chan bool
+	closing      chan bool
+	closed       chan bool
+	metadataChan chan *RecordMetadata
 }
 
-func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
+func NewRecordAccumulator(config *RecordAccumulatorConfig, metadataChan chan *RecordMetadata) *RecordAccumulator {
 	accumulator := &RecordAccumulator{}
 	accumulator.config = config
 	accumulator.batchSize = config.batchSize
@@ -37,6 +38,7 @@ func NewRecordAccumulator(config *RecordAccumulatorConfig) *RecordAccumulator {
 	accumulator.networkClient = config.networkClient
 	accumulator.closing = make(chan bool)
 	accumulator.closed = make(chan bool)
+	accumulator.metadataChan = metadataChan
 
 	go accumulator.sender()
 

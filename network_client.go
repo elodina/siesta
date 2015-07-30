@@ -1,76 +1,10 @@
 package siesta
 
-import (
-	"math"
-	"net"
-)
-
-type Node struct {
-	id string
-}
-
-func (n *Node) address() string {
-	return n.id
-}
-
-const (
-	Disconnected = iota
-	Connecting
-	Connected
-)
-
-type NodeState struct {
-	timestamp            int64
-	state                int
-	lastConnectAttemptMs int64
-}
-
-type ClusterConnectionStates struct {
-	nodeStates         map[string]*NodeState
-	reconnectBackoffMs int64
-}
-
-func NewClusterConnectionStates() *ClusterConnectionStates {
-	states := &ClusterConnectionStates{}
-	states.nodeStates = make(map[string]*NodeState)
-	return states
-}
-
-func (ccs *ClusterConnectionStates) connecting(nodeId string, now int64) {
-	ccs.nodeStates[nodeId].state = Connecting
-}
-
-func (ccs *ClusterConnectionStates) disconnected(nodeId string) {
-	ccs.nodeStates[nodeId].state = Disconnected
-}
-
-func (ccs *ClusterConnectionStates) isConnected(nodeId string) bool {
-	return ccs.nodeStates[nodeId].state == Connected
-}
-
-func (ccs *ClusterConnectionStates) canConnect(nodeId string, now int64) bool {
-	state := ccs.nodeStates[nodeId]
-	return state.state == Disconnected && now-state.lastConnectAttemptMs >= ccs.reconnectBackoffMs
-}
-
-func (ccs *ClusterConnectionStates) connectionDelay(nodeId string, now int64) int64 {
-	state := ccs.nodeStates[nodeId]
-	if state.state == Disconnected {
-		timeWaited := now - state.lastConnectAttemptMs
-		if timeWaited < ccs.reconnectBackoffMs {
-			return ccs.reconnectBackoffMs - timeWaited
-		} else {
-			return 0
-		}
-	} else {
-		return math.MaxInt64
-	}
-}
+import "net"
 
 type NetworkClient struct {
 	connector               Connector
 	metadata                Metadata
-	connectionStates        *ClusterConnectionStates
 	socketSendBuffer        int
 	socketReceiveBuffer     int
 	clientId                string
@@ -82,36 +16,29 @@ type NetworkClient struct {
 	connections             map[string]*net.TCPConn
 	requiredAcks            int
 	ackTimeoutMs            int32
+	metadataChan            chan *RecordMetadata
 }
 
 type NetworkClientConfig struct {
 }
 
-func NewNetworkClient(config NetworkClientConfig, connector Connector, producerConfig *ProducerConfig) *NetworkClient {
+func NewNetworkClient(config NetworkClientConfig, connector Connector, producerConfig *ProducerConfig, metadataChan chan *RecordMetadata) *NetworkClient {
 	client := &NetworkClient{}
 	client.connector = connector
 	client.requiredAcks = producerConfig.RequiredAcks
 	client.ackTimeoutMs = producerConfig.AckTimeoutMs
 	selectorConfig := NewSelectorConfig(producerConfig)
 	client.selector = NewSelector(selectorConfig)
-	client.connectionStates = NewClusterConnectionStates()
 	client.connections = make(map[string]*net.TCPConn, 0)
+	client.metadataChan = metadataChan
 	return client
-}
-
-func (nc *NetworkClient) connectionDelay(node *Node, now int64) int64 {
-	return nc.connectionStates.connectionDelay(node.id, now)
-}
-
-func (nc *NetworkClient) connectionFailed(node *Node) bool {
-	return nc.connectionStates.nodeStates[node.id].state == Disconnected
 }
 
 func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRecord) {
 	leader, err := nc.connector.GetLeader(topic, partition)
 	if err != nil {
-		for _, record := range batch {
-			record.metadataChan <- &RecordMetadata{Error: err}
+		for i := 0; i < len(batch); i++ {
+			nc.metadataChan <- &RecordMetadata{Error: err}
 		}
 	}
 
@@ -124,11 +51,11 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 	responseChan := nc.selector.Send(leader, request)
 
 	if nc.requiredAcks > 0 {
-		go listenForResponse(topic, partition, batch, responseChan)
+		go listenForResponse(topic, partition, batch, responseChan, nc.metadataChan)
 	} else {
 		// acks = 0 case, just complete all requests
-		for _, record := range batch {
-			record.metadataChan <- &RecordMetadata{
+		for i := 0; i < len(batch); i++ {
+			nc.metadataChan <- &RecordMetadata{
 				Offset:    -1,
 				Topic:     topic,
 				Partition: partition,
@@ -138,11 +65,11 @@ func (nc *NetworkClient) send(topic string, partition int32, batch []*ProducerRe
 	}
 }
 
-func listenForResponse(topic string, partition int32, batch []*ProducerRecord, responseChan <-chan *rawResponseAndError) {
+func listenForResponse(topic string, partition int32, batch []*ProducerRecord, responseChan <-chan *rawResponseAndError, metadataChan chan *RecordMetadata) {
 	response := <-responseChan
 	if response.err != nil {
-		for _, record := range batch {
-			record.metadataChan <- &RecordMetadata{Error: response.err}
+		for i := 0; i < len(batch); i++ {
+			metadataChan <- &RecordMetadata{Error: response.err}
 		}
 	}
 
@@ -150,15 +77,15 @@ func listenForResponse(topic string, partition int32, batch []*ProducerRecord, r
 	produceResponse := new(ProduceResponse)
 	decodingErr := produceResponse.Read(decoder)
 	if decodingErr != nil {
-		for _, record := range batch {
-			record.metadataChan <- &RecordMetadata{Error: decodingErr.err}
+		for i := 0; i < len(batch); i++ {
+			metadataChan <- &RecordMetadata{Error: decodingErr.err}
 		}
 	}
 
 	status := produceResponse.Status[topic][partition]
 	currentOffset := status.Offset
-	for _, record := range batch {
-		record.metadataChan <- &RecordMetadata{
+	for i := 0; i < len(batch); i++ {
+		metadataChan <- &RecordMetadata{
 			Topic:     topic,
 			Partition: partition,
 			Offset:    currentOffset,

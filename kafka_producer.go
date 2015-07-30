@@ -11,7 +11,6 @@ type ProducerRecord struct {
 	Key   interface{}
 	Value interface{}
 
-	metadataChan chan *RecordMetadata
 	partition    int32
 	encodedKey   []byte
 	encodedValue []byte
@@ -117,7 +116,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
-	client := NewNetworkClient(networkClientConfig, connector, config)
+	client := NewNetworkClient(networkClientConfig, connector, config, producer.RecordsMetadata)
 
 	accumulatorConfig := &RecordAccumulatorConfig{
 		batchSize:         config.BatchSize,
@@ -131,7 +130,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 		metricTags:        metricTags,
 		networkClient:     client,
 	}
-	producer.accumulator = NewRecordAccumulator(accumulatorConfig)
+	producer.accumulator = NewRecordAccumulator(accumulatorConfig, producer.RecordsMetadata)
 
 	log.Println("Kafka producer started")
 
@@ -177,7 +176,6 @@ func (kp *KafkaProducer) send(record *ProducerRecord) {
 		return
 	}
 	record.partition = partition
-	record.metadataChan = metadataChan
 
 	kp.accumulator.addChan <- record
 }
