@@ -16,24 +16,13 @@ limitations under the License. */
 package siesta
 
 import (
-	"fmt"
 	"strconv"
-	"strings"
 	"time"
 )
 
 func setStringConfig(where *string, what string) {
 	if what != "" {
 		*where = what
-	}
-}
-
-func setStringSliceConfig(where *[]string, what string, delimiter string) {
-	if what != "" {
-		splitted := strings.Split(what, delimiter)
-		if len(splitted) > 0 {
-			*where = splitted
-		}
 	}
 }
 
@@ -74,17 +63,4 @@ func setInt32Config(where *int32, what string) error {
 		return err
 	}
 	return nil
-}
-
-func GetSerializer(name string) (func(value interface{}) ([]byte, error), error) {
-	switch name {
-	case "":
-		return ByteSerializer, nil
-	case "ByteSerializer":
-		return ByteSerializer, nil
-	case "StringSerializer":
-		return StringSerializer, nil
-	default:
-		return nil, fmt.Errorf("Unknown serializer: %s", name)
-	}
 }

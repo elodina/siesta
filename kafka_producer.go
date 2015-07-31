@@ -1,7 +1,6 @@
 package siesta
 
 import (
-	"errors"
 	"fmt"
 	"github.com/jimlawless/cfg"
 	"log"
@@ -155,7 +154,7 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	return producer
 }
 
-func ProducerFromFile(filename string) (*KafkaProducer, error) {
+func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
 	c, err := cfg.LoadNewMap(filename)
 	if err != nil {
 		return nil, err
@@ -205,26 +204,7 @@ func ProducerFromFile(filename string) (*KafkaProducer, error) {
 		return nil, err
 	}
 
-	connectorConfig := NewConnectorConfig()
-	if _, exists := c["bootstrap.servers"]; !exists {
-		return nil, errors.New("bootstrap.servers property is required")
-	}
-	setStringSliceConfig(&connectorConfig.BrokerList, c["bootstrap.servers"], ",")
-	connector, err := NewDefaultConnector(connectorConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	keySerializer, err := GetSerializer(c["key.serializer"])
-	if err != nil {
-		return nil, err
-	}
-	valueSerializer, err := GetSerializer(c["value.serializer"])
-	if err != nil {
-		return nil, err
-	}
-
-	return NewKafkaProducer(producerConfig, keySerializer, valueSerializer, connector), nil
+	return producerConfig, nil
 }
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) {
