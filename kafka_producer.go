@@ -1,7 +1,9 @@
 package siesta
 
 import (
+	"errors"
 	"fmt"
+	"github.com/jimlawless/cfg"
 	"log"
 	"time"
 )
@@ -33,6 +35,7 @@ type ProducerConfig struct {
 	CompressionType      string
 	BatchSize            int
 	Linger               time.Duration
+	Retries              int
 	RetryBackoff         time.Duration
 	BlockOnBufferFull    bool
 
@@ -44,6 +47,21 @@ type ProducerConfig struct {
 	WriteTimeout    time.Duration
 	RequiredAcks    int
 	AckTimeoutMs    int32
+}
+
+func NewProducerConfig() *ProducerConfig {
+	return &ProducerConfig{
+		BatchSize:       1000,
+		ClientID:        "siesta",
+		MaxRequests:     10,
+		SendRoutines:    10,
+		ReceiveRoutines: 10,
+		ReadTimeout:     5 * time.Second,
+		WriteTimeout:    5 * time.Second,
+		RequiredAcks:    1,
+		AckTimeoutMs:    1000,
+		Linger:          1 * time.Second,
+	}
 }
 
 type Serializer func(interface{}) ([]byte, error)
@@ -135,6 +153,78 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	log.Println("Kafka producer started")
 
 	return producer
+}
+
+func ProducerFromFile(filename string) (*KafkaProducer, error) {
+	c, err := cfg.LoadNewMap(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	producerConfig := NewProducerConfig()
+	if err := setDurationConfig(&producerConfig.MetadataFetchTimeout, c["metadata.fetch.timeout"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.MetadataExpire, c["metadata.max.age"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.MaxRequestSize, c["metadata.expire"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.BatchSize, c["batch.size"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.RequiredAcks, c["acks"]); err != nil {
+		return nil, err
+	}
+	if err := setInt32Config(&producerConfig.AckTimeoutMs, c["timeout.ms"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.Linger, c["linger"]); err != nil {
+		return nil, err
+	}
+	setStringConfig(&producerConfig.ClientID, c["client.id"])
+	if err := setIntConfig(&producerConfig.SendRoutines, c["send.routines"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.ReceiveRoutines, c["receive.routines"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.MaxRequestSize, c["max.request.size"]); err != nil {
+		return nil, err
+	}
+	setBoolConfig(&producerConfig.BlockOnBufferFull, c["block.on.buffer.full"])
+	if err := setIntConfig(&producerConfig.Retries, c["retries"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.RetryBackoff, c["retry.backoff"]); err != nil {
+		return nil, err
+	}
+	setStringConfig(&producerConfig.CompressionType, c["compression.type"])
+	if err := setIntConfig(&producerConfig.MaxRequests, c["max.requests"]); err != nil {
+		return nil, err
+	}
+
+	connectorConfig := NewConnectorConfig()
+	if _, exists := c["bootstrap.servers"]; !exists {
+		return nil, errors.New("bootstrap.servers property is required")
+	}
+	setStringSliceConfig(&connectorConfig.BrokerList, c["bootstrap.servers"], ",")
+	connector, err := NewDefaultConnector(connectorConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	keySerializer, err := GetSerializer(c["key.serializer"])
+	if err != nil {
+		return nil, err
+	}
+	valueSerializer, err := GetSerializer(c["value.serializer"])
+	if err != nil {
+		return nil, err
+	}
+
+	return NewKafkaProducer(producerConfig, keySerializer, valueSerializer, connector), nil
 }
 
 func (kp *KafkaProducer) Send(record *ProducerRecord) {
