@@ -100,9 +100,6 @@ func (ra *RecordAccumulator) watcher(topic string, partition int32) {
 		}
 		select {
 		case record := <-ra.records[topic][partition]:
-			if len(ra.batches[record.Topic][record.partition]) == 0 {
-				ra.batches[topic][partition] = make([]*ProducerRecord, 0, ra.batchSize)
-			}
 			ra.batches[record.Topic][record.partition] = append(ra.batches[record.Topic][record.partition], record)
 		case <-timeout:
 			ra.flush(topic, partition, ra.batches[topic][partition])
