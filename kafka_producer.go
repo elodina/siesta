@@ -2,9 +2,10 @@ package siesta
 
 import (
 	"fmt"
-	"github.com/jimlawless/cfg"
 	"log"
 	"time"
+
+	"github.com/jimlawless/cfg"
 )
 
 type ProducerRecord struct {
