@@ -67,8 +67,8 @@ func (ra *RecordAccumulator) sender() {
 }
 
 func (ra *RecordAccumulator) cleanup() {
-	ra.flushAll()
 	close(ra.addChan)
+	ra.flushAll()
 	ra.networkClient.close()
 	ra.closed <- true
 }
