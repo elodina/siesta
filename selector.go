@@ -65,6 +65,7 @@ type Selector struct {
 	config    *SelectorConfig
 	requests  chan *NetworkRequest
 	responses chan *ConnectionRequest
+	closed    chan struct{}
 }
 
 func NewSelector(config *SelectorConfig) *Selector {
@@ -72,6 +73,7 @@ func NewSelector(config *SelectorConfig) *Selector {
 		config:    config,
 		requests:  make(chan *NetworkRequest, config.MaxRequests),
 		responses: make(chan *ConnectionRequest, config.MaxRequests),
+		closed:    make(chan struct{}, 1),
 	}
 	selector.Start()
 	return selector
@@ -90,13 +92,18 @@ func (s *Selector) Start() {
 }
 
 func (s *Selector) Close() {
+	s.closed <- struct{}{}
 	close(s.requests)
 	close(s.responses)
 }
 
 func (s *Selector) Send(link BrokerLink, request Request) <-chan *rawResponseAndError {
 	responseChan := make(chan *rawResponseAndError, 1) //make this buffered so we don't block if noone reads the response
-	s.requests <- &NetworkRequest{link, request, responseChan}
+	select {
+	case <-s.closed:
+	default:
+		s.requests <- &NetworkRequest{link, request, responseChan}
+	}
 
 	return responseChan
 }
