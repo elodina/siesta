@@ -23,7 +23,7 @@ func NetMetadata(connector Connector, metadataExpire time.Duration) *Metadata {
 
 func (tmc *Metadata) Get(topic string) ([]int32, error) {
 	cache := tmc.cache[topic]
-	if cache == nil {
+	if cache == nil || cache.timestamp.Add(tmc.metadataExpire).Before(time.Now()) {
 		err := tmc.Refresh([]string{topic})
 		if err != nil {
 			return nil, err
@@ -32,17 +32,7 @@ func (tmc *Metadata) Get(topic string) ([]int32, error) {
 
 	cache = tmc.cache[topic]
 	if cache != nil {
-		if cache.timestamp.Add(tmc.metadataExpire).Before(time.Now()) {
-			err := tmc.Refresh([]string{topic})
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		cache = tmc.cache[topic]
-		if cache != nil {
-			return cache.partitions, nil
-		}
+		return cache.partitions, nil
 	}
 
 	return nil, fmt.Errorf("Could not get topic metadata for topic %s", topic)

@@ -36,10 +36,10 @@ func TestProducerSend1(t *testing.T) {
 		Linger:          1 * time.Second,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
-	metadataChan := producer.Send(&ProducerRecord{Topic: "siesta", Value: "hello world"})
+	producer.Send(&ProducerRecord{Topic: "siesta", Value: "hello world"})
 
 	select {
-	case metadata := <-metadataChan:
+	case metadata := <-producer.RecordsMetadata:
 		assert(t, metadata.Error, ErrNoError)
 		assert(t, metadata.Topic, "siesta")
 		assert(t, metadata.Partition, int32(0))
@@ -53,7 +53,7 @@ func TestProducerSend1(t *testing.T) {
 func TestProducerSend1000(t *testing.T) {
 	connector := testConnector(t)
 	producerConfig := &ProducerConfig{
-		BatchSize:       1000,
+		BatchSize:       100,
 		ClientID:        "siesta",
 		MaxRequests:     10,
 		SendRoutines:    10,
@@ -65,14 +65,13 @@ func TestProducerSend1000(t *testing.T) {
 		Linger:          1 * time.Second,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
-	metadataChannels := make([]<-chan *RecordMetadata, 0)
 	for i := 0; i < 1000; i++ {
-		metadataChannels = append(metadataChannels, producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)}))
+		producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)})
 	}
 
-	for _, metadataChan := range metadataChannels {
+	for i := 0; i < 1000; i++ {
 		select {
-		case metadata := <-metadataChan:
+		case metadata := <-producer.RecordsMetadata:
 			assert(t, metadata.Error, ErrNoError)
 			assert(t, metadata.Topic, "siesta")
 			assert(t, metadata.Partition, int32(0))
@@ -98,21 +97,23 @@ func TestProducerRequiredAcks0(t *testing.T) {
 		Linger:          1 * time.Second,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
-	metadataChannels := make([]<-chan *RecordMetadata, 0)
-	for i := 0; i < 100; i++ {
-		metadataChannels = append(metadataChannels, producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)}))
-	}
 
-	for _, metadataChan := range metadataChannels {
-		select {
-		case metadata := <-metadataChan:
-			assert(t, metadata.Error, ErrNoError)
-			assert(t, metadata.Topic, "siesta")
-			assert(t, metadata.Partition, int32(0))
-			assert(t, metadata.Offset, int64(-1))
-		case <-time.After(5 * time.Second):
-			t.Fatal("Could not get produce response within 5 seconds")
+	go func() {
+		for i := 0; i < 1000; i++ {
+			select {
+			case metadata := <-producer.RecordsMetadata:
+				assert(t, metadata.Error, ErrNoError)
+				assert(t, metadata.Topic, "siesta")
+				assert(t, metadata.Partition, int32(0))
+				assert(t, metadata.Offset, int64(-1))
+			case <-time.After(5 * time.Second):
+				t.Fatal("Could not get produce response within 5 seconds")
+			}
 		}
+	}()
+
+	for i := 0; i < 1000; i++ {
+		producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)})
 	}
 
 	producer.Close(1 * time.Second)
@@ -129,17 +130,16 @@ func TestProducerFlushTimeout(t *testing.T) {
 		ReadTimeout:     5 * time.Second,
 		WriteTimeout:    5 * time.Second,
 		RequiredAcks:    0,
-		Linger:          1 * time.Second,
+		Linger:          500 * time.Millisecond,
 	}
 	producer := NewKafkaProducer(producerConfig, ByteSerializer, StringSerializer, connector)
-	metadataChannels := make([]<-chan *RecordMetadata, 0)
 	for i := 0; i < 100; i++ {
-		metadataChannels = append(metadataChannels, producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)}))
+		producer.Send(&ProducerRecord{Topic: "siesta", Value: fmt.Sprintf("%d", i)})
 	}
 
-	for _, metadataChan := range metadataChannels {
+	for i := 0; i < 100; i++ {
 		select {
-		case metadata := <-metadataChan:
+		case metadata := <-producer.RecordsMetadata:
 			assert(t, metadata.Error, ErrNoError)
 			assert(t, metadata.Topic, "siesta")
 			assert(t, metadata.Partition, int32(0))

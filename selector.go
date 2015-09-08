@@ -82,8 +82,10 @@ func (s *Selector) Start() {
 		go s.requestDispatcher()
 	}
 
-	for i := 0; i < s.config.ReceiveRoutines; i++ {
-		go s.responseDispatcher()
+	if s.config.RequiredAcks > 0 {
+		for i := 0; i < s.config.ReceiveRoutines; i++ {
+			go s.responseDispatcher()
+		}
 	}
 }
 
@@ -105,18 +107,27 @@ func (s *Selector) requestDispatcher() {
 		id, conn, err := link.GetConnection()
 		if err != nil {
 			link.Failed()
-			request.responseChan <- &rawResponseAndError{nil, link, err}
+			if s.config.RequiredAcks > 0 {
+				request.responseChan <- &rawResponseAndError{nil, link, err}
+			}
 			continue
 		}
 
 		if err := s.send(id, conn, request.request); err != nil {
 			link.Failed()
-			request.responseChan <- &rawResponseAndError{nil, link, err}
+			if s.config.RequiredAcks > 0 {
+				request.responseChan <- &rawResponseAndError{nil, link, err}
+			} else {
+				link.ReturnConnection(conn)
+			}
 			continue
 		}
 
 		if s.config.RequiredAcks > 0 {
 			s.responses <- &ConnectionRequest{connection: conn, request: request}
+		} else {
+			link.Succeeded()
+			link.ReturnConnection(conn)
 		}
 	}
 }
@@ -131,6 +142,7 @@ func (s *Selector) responseDispatcher() {
 		if err != nil {
 			link.Failed()
 			responseChan <- &rawResponseAndError{nil, link, err}
+			link.ReturnConnection(conn)
 			continue
 		}
 

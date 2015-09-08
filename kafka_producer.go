@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/jimlawless/cfg"
 )
 
 type ProducerRecord struct {
@@ -11,7 +13,6 @@ type ProducerRecord struct {
 	Key   interface{}
 	Value interface{}
 
-	metadataChan chan *RecordMetadata
 	partition    int32
 	encodedKey   []byte
 	encodedValue []byte
@@ -34,6 +35,7 @@ type ProducerConfig struct {
 	CompressionType      string
 	BatchSize            int
 	Linger               time.Duration
+	Retries              int
 	RetryBackoff         time.Duration
 	BlockOnBufferFull    bool
 
@@ -45,6 +47,21 @@ type ProducerConfig struct {
 	WriteTimeout    time.Duration
 	RequiredAcks    int
 	AckTimeoutMs    int32
+}
+
+func NewProducerConfig() *ProducerConfig {
+	return &ProducerConfig{
+		BatchSize:       1000,
+		ClientID:        "siesta",
+		MaxRequests:     10,
+		SendRoutines:    10,
+		ReceiveRoutines: 10,
+		ReadTimeout:     5 * time.Second,
+		WriteTimeout:    5 * time.Second,
+		RequiredAcks:    1,
+		AckTimeoutMs:    1000,
+		Linger:          1 * time.Second,
+	}
 }
 
 type Serializer func(interface{}) ([]byte, error)
@@ -99,6 +116,7 @@ type KafkaProducer struct {
 	metricTags      map[string]string
 	connector       Connector
 	metadata        *Metadata
+	RecordsMetadata chan *RecordMetadata
 }
 
 func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSerializer Serializer, connector Connector) *KafkaProducer {
@@ -112,10 +130,11 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 	producer.valueSerializer = valueSerializer
 	producer.connector = connector
 	producer.metadata = NetMetadata(connector, config.MetadataExpire)
+	producer.RecordsMetadata = make(chan *RecordMetadata)
 	metricTags := make(map[string]string)
 
 	networkClientConfig := NetworkClientConfig{}
-	client := NewNetworkClient(networkClientConfig, connector, config)
+	client := NewNetworkClient(networkClientConfig, connector, config, producer.RecordsMetadata)
 
 	accumulatorConfig := &RecordAccumulatorConfig{
 		batchSize:         config.BatchSize,
@@ -129,20 +148,72 @@ func NewKafkaProducer(config *ProducerConfig, keySerializer Serializer, valueSer
 		metricTags:        metricTags,
 		networkClient:     client,
 	}
-	producer.accumulator = NewRecordAccumulator(accumulatorConfig)
+	producer.accumulator = NewRecordAccumulator(accumulatorConfig, producer.RecordsMetadata)
 
 	log.Println("Kafka producer started")
 
 	return producer
 }
 
-func (kp *KafkaProducer) Send(record *ProducerRecord) <-chan *RecordMetadata {
-	metadata := make(chan *RecordMetadata, 1)
-	kp.send(record, metadata)
-	return metadata
+func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
+	c, err := cfg.LoadNewMap(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	producerConfig := NewProducerConfig()
+	if err := setDurationConfig(&producerConfig.MetadataFetchTimeout, c["metadata.fetch.timeout"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.MetadataExpire, c["metadata.max.age"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.MaxRequestSize, c["metadata.expire"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.BatchSize, c["batch.size"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.RequiredAcks, c["acks"]); err != nil {
+		return nil, err
+	}
+	if err := setInt32Config(&producerConfig.AckTimeoutMs, c["timeout.ms"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.Linger, c["linger"]); err != nil {
+		return nil, err
+	}
+	setStringConfig(&producerConfig.ClientID, c["client.id"])
+	if err := setIntConfig(&producerConfig.SendRoutines, c["send.routines"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.ReceiveRoutines, c["receive.routines"]); err != nil {
+		return nil, err
+	}
+	if err := setIntConfig(&producerConfig.MaxRequestSize, c["max.request.size"]); err != nil {
+		return nil, err
+	}
+	setBoolConfig(&producerConfig.BlockOnBufferFull, c["block.on.buffer.full"])
+	if err := setIntConfig(&producerConfig.Retries, c["retries"]); err != nil {
+		return nil, err
+	}
+	if err := setDurationConfig(&producerConfig.RetryBackoff, c["retry.backoff"]); err != nil {
+		return nil, err
+	}
+	setStringConfig(&producerConfig.CompressionType, c["compression.type"])
+	if err := setIntConfig(&producerConfig.MaxRequests, c["max.requests"]); err != nil {
+		return nil, err
+	}
+
+	return producerConfig, nil
 }
 
-func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordMetadata) {
+func (kp *KafkaProducer) Send(record *ProducerRecord) {
+	kp.send(record)
+}
+
+func (kp *KafkaProducer) send(record *ProducerRecord) {
+	metadataChan := kp.RecordsMetadata
 	metadata := new(RecordMetadata)
 
 	serializedKey, err := kp.keySerializer(record.Key)
@@ -176,7 +247,6 @@ func (kp *KafkaProducer) send(record *ProducerRecord, metadataChan chan *RecordM
 		return
 	}
 	record.partition = partition
-	record.metadataChan = metadataChan
 
 	kp.accumulator.addChan <- record
 }
