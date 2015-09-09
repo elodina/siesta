@@ -206,7 +206,10 @@ func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
 		return nil, err
 	}
 
-	setStringsConfig(&producerConfig.BrokerList, c["metadata.broker.list"])
+	setStringsConfig(&producerConfig.BrokerList, c["bootstrap.servers"])
+	if len(producerConfig.BrokerList) == 0 {
+		setStringsConfig(&producerConfig.BrokerList, c["metadata.broker.list"])
+	}
 
 	return producerConfig, nil
 }
