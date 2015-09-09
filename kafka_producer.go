@@ -47,6 +47,7 @@ type ProducerConfig struct {
 	WriteTimeout    time.Duration
 	RequiredAcks    int
 	AckTimeoutMs    int32
+	BrokerList      []string
 }
 
 func NewProducerConfig() *ProducerConfig {
@@ -204,6 +205,8 @@ func ProducerConfigFromFile(filename string) (*ProducerConfig, error) {
 	if err := setIntConfig(&producerConfig.MaxRequests, c["max.requests"]); err != nil {
 		return nil, err
 	}
+
+	setStringsConfig(&producerConfig.BrokerList, c["metadata.broker.list"])
 
 	return producerConfig, nil
 }
