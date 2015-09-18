@@ -92,21 +92,25 @@ func (ra *RecordAccumulator) createBatch(topic string, partition int32) {
 }
 
 func (ra *RecordAccumulator) watcher(topic string, partition int32) {
-	timeout := time.After(ra.config.linger)
+	timeout := time.NewTimer(ra.config.linger)
 	for {
 		select {
 		case record := <-ra.records[topic][partition]:
 			ra.batches[record.Topic][record.partition] = append(ra.batches[record.Topic][record.partition], record)
-		case <-timeout:
+		case <-timeout.C:
 			ra.flush(topic, partition)
+			timeout.Reset(ra.config.linger)
 		case <-ra.closing:
 			ra.closing <- true
+			timeout.Stop()
 			return
 		}
 		if len(ra.batches[topic][partition]) >= ra.batchSize {
 			ra.flush(topic, partition)
+			timeout.Reset(ra.config.linger)
 		}
 	}
+	timeout.Stop()
 }
 
 func (ra *RecordAccumulator) flush(topic string, partition int32) {
