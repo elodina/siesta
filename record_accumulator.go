@@ -99,16 +99,12 @@ func (ra *RecordAccumulator) watcher(topic string, partition int32) {
 			ra.batches[record.Topic][record.partition] = append(ra.batches[record.Topic][record.partition], record)
 		case <-timeout:
 			ra.flush(topic, partition)
-			go ra.watcher(topic, partition)
-			return
 		case <-ra.closing:
 			ra.closing <- true
 			return
 		}
 		if len(ra.batches[topic][partition]) >= ra.batchSize {
 			ra.flush(topic, partition)
-			go ra.watcher(topic, partition)
-			return
 		}
 	}
 }
