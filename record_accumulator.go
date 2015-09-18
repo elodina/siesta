@@ -84,7 +84,9 @@ func (ra *RecordAccumulator) addRecord(record *ProducerRecord) {
 
 func (ra *RecordAccumulator) createBatch(topic string, partition int32) {
 	ra.batches[topic][partition] = make([]*ProducerRecord, 0, ra.batchSize)
-	ra.records[topic] = make(map[int32]chan *ProducerRecord)
+	if ra.records[topic] == nil {
+		ra.records[topic] = make(map[int32]chan *ProducerRecord)
+	}
 	ra.records[topic][partition] = make(chan *ProducerRecord, ra.batchSize)
 	go ra.watcher(topic, partition)
 }
