@@ -126,6 +126,7 @@ func NewConnectorConfig() *ConnectorConfig {
 		KeepAliveTimeout:        1 * time.Minute,
 		MaxConnections:          5,
 		MaxConnectionsPerBroker: 5,
+		FetchMinBytes:           1,
 		FetchSize:               1024000,
 		FetchMaxWaitTime:        1000,
 		MetadataRetries:         5,
