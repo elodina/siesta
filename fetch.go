@@ -123,6 +123,19 @@ func (fr *FetchResponse) GetMessages() ([]*MessageAndMetadata, error) {
 	return messages, err
 }
 
+// Error returns the error message for a given topic and pertion of this FetchResponse
+func (fr *FetchResponse) Error(topic string, partition int32) error {
+	t, ok := fr.Data[topic]
+	if !ok {
+		return nil
+	}
+	p, ok := t[partition]
+	if !ok {
+		return nil
+	}
+	return p.Error
+}
+
 // CollectMessages traverses this FetchResponse and applies a collector function to each message
 // giving the possibility to avoid response -> siesta.Message -> other.Message conversion if necessary.
 func (fr *FetchResponse) CollectMessages(collector func(topic string, partition int32, offset int64, key []byte, value []byte)) error {
