@@ -1,15 +1,13 @@
 language: go
 go:
-- 1.2
 - 1.3
 - 1.4
 - 1.5
-- 1.5.1
 - tip
 
 before_install:
 - export TRAVIS_CI=true
-- export KAFKA_VERSION=0.8.2.0
+- export KAFKA_VERSION=0.8.2.2
 - export SCALA_VERSION=2.10
 - export KAFKA_RELEASE=kafka_$SCALA_VERSION-$KAFKA_VERSION
 - export KAFKA_URL=https://archive.apache.org/dist/kafka/$KAFKA_VERSION/$KAFKA_RELEASE.tgz

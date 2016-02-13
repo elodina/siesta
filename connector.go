@@ -214,7 +214,7 @@ type DefaultConnector struct {
 	leaders        map[string]map[int32]*brokerLink
 	links          []*brokerLink
 	bootstrapLinks []*brokerLink
-	lock           sync.Mutex
+	leaderLock     sync.RWMutex
 
 	//offset coordination part
 	offsetCoordinators map[string]int32
@@ -476,6 +476,9 @@ func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries 
 }
 
 func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
+	dc.leaderLock.RLock()
+	defer dc.leaderLock.RUnlock()
+
 	leadersForTopic, exists := dc.leaders[topic]
 	if !exists {
 		return nil
@@ -486,8 +489,8 @@ func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink
 
 func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
 	Tracef(dc, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.leaderLock.Lock()
+	defer dc.leaderLock.Unlock()
 
 	if _, exists := dc.leaders[topic]; !exists {
 		dc.leaders[topic] = make(map[int32]*brokerLink)
@@ -509,8 +512,8 @@ func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *bro
 }
 
 func (dc *DefaultConnector) removeLeader(topic string, partition int32) {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.leaderLock.Lock()
+	defer dc.leaderLock.Unlock()
 
 	if leadersForTopic, exists := dc.leaders[topic]; exists {
 		delete(leadersForTopic, partition)
