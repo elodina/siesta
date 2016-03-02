@@ -65,14 +65,59 @@ var ErrStaleControllerEpochCode = errors.New("Broker-to-broker communication fau
 // A mapping for Kafka error code 12.
 var ErrOffsetMetadataTooLargeCode = errors.New("You've jsut specified a string larger than configured maximum for offset metadata.")
 
-// A mapping for Kafka error code 13.
+// A mapping for Kafka error code 14.
 var ErrOffsetsLoadInProgressCode = errors.New("Offset loading is in progress. (Usually happens after a leader change for that offsets topic partition).")
 
-// A mapping for Kafka error code 14.
+// A mapping for Kafka error code 15.
 var ErrConsumerCoordinatorNotAvailableCode = errors.New("Offsets topic has not yet been created.")
 
-// A mapping for Kafka error code 15.
+// A mapping for Kafka error code 16.
 var ErrNotCoordinatorForConsumerCode = errors.New("There is no coordinator for this consumer.")
+
+// A mapping for Kafka error code 17
+var ErrInvalidTopicCode = errors.New("Attempt to access an invalid topic.")
+
+// A mapping for Kafka error code 18
+var ErrRecordListTooLarge = errors.New("Message batch exceeds the maximum configured segment size.")
+
+// A mapping for Kafka error code 19
+var ErrNotEnoughReplicas = errors.New("The number of in-sync replicas is lower than the configured minimum.")
+
+// A mapping for Kafka error code 20
+var ErrNotEnoughReplicasAfterAppend = errors.New("The message was written to the log, but with fewer in-sync replicas than required.")
+
+// A mapping for Kafka error code 21
+var ErrInvalidRequiredAcks = errors.New("The requested requiredAcks is invalid.")
+
+// A mapping for Kafka error code 22
+var ErrIllegalGeneration = errors.New("The generation id provided in the request is not the current generation.")
+
+// A mapping for Kafka error code 23
+var ErrInconsistentGroupProtocol = errors.New("Provided protocol type or set of protocols is not compatible with the current group.")
+
+// A mapping for Kafka error code 24
+var ErrInvalidGroupID = errors.New("The groupId is empty or null.")
+
+// A mapping for Kafka error code 25
+var ErrUnknownMemberID = errors.New("The memberId is not in the current generation.")
+
+// A mapping for Kafka error code 26
+var ErrInvalidSessionTimeout = errors.New("The requested session timeout is outside of the allowed range on the broker.")
+
+// A mapping for Kafka error code 27
+var ErrRebalanceInProgress = errors.New("The coordinator has begun rebalancing the group. This indicates to the client that it should rejoin the group.")
+
+// A mapping for Kafka error code 28
+var ErrInvalidCommitOffsetSize = errors.New("Offset commit was rejected because of oversize metadata.")
+
+// A mapping for Kafka error code 29
+var ErrTopicAuthorizationFailed = errors.New("The client is not authorized to access the requested topic.")
+
+// A mapping for Kafka error code 30
+var ErrGroupAuthorizationFailed = errors.New("The client is not authorized to access a particular groupId.")
+
+// A mapping for Kafka error code 31
+var ErrClusterAuthorizationFailed = errors.New("The client is not authorized to use an inter-broker or administrative API.")
 
 // Mapping between Kafka error codes and actual error messages.
 var BrokerErrors = map[int16]error{
@@ -93,4 +138,19 @@ var BrokerErrors = map[int16]error{
 	14: ErrOffsetsLoadInProgressCode,
 	15: ErrConsumerCoordinatorNotAvailableCode,
 	16: ErrNotCoordinatorForConsumerCode,
+	17: ErrInvalidTopicCode,
+	18: ErrRecordListTooLarge,
+	19: ErrNotEnoughReplicas,
+	20: ErrNotEnoughReplicasAfterAppend,
+	21: ErrInvalidRequiredAcks,
+	22: ErrIllegalGeneration,
+	23: ErrInconsistentGroupProtocol,
+	24: ErrInvalidGroupID,
+	25: ErrUnknownMemberID,
+	26: ErrInvalidSessionTimeout,
+	27: ErrRebalanceInProgress,
+	28: ErrInvalidCommitOffsetSize,
+	29: ErrTopicAuthorizationFailed,
+	30: ErrGroupAuthorizationFailed,
+	31: ErrClusterAuthorizationFailed,
 }
