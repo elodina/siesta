@@ -35,7 +35,7 @@ func (jgr *JoinGroupRequest) Version() int16 {
 
 func (jgr *JoinGroupRequest) Write(encoder Encoder) {
 	encoder.WriteString(jgr.GroupID)
-	encoder.WriteInt32(len(jgr.SessionTimeout))
+	encoder.WriteInt32(jgr.SessionTimeout)
 	encoder.WriteString(jgr.MemberID)
 	encoder.WriteString(jgr.ProtocolType)
 
@@ -102,7 +102,7 @@ func (jgr *JoinGroupResponse) Read(decoder Decoder) *DecodingError {
 	}
 
 	jgr.Members = make(map[string][]byte, membersLength)
-	for i := 0; i < membersLength; i++ {
+	for i := 0; i < int(membersLength); i++ {
 		memberID, err := decoder.GetString()
 		if err != nil {
 			return NewDecodingError(err, reasonInvalidJoinGroupResponseMembersMemberID)
