@@ -452,6 +452,19 @@ func (dc *DefaultConnector) refreshLeaders(response *MetadataResponse) {
 			}
 		}
 	}
+
+	for _, broker := range brokers {
+		found := false
+		for _, link := range dc.links {
+			if broker == link {
+				found = true
+				break
+			}
+		}
+		if !found {
+			broker.stop <- true
+		}
+	}
 }
 
 func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, error) {
