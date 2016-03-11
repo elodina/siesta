@@ -54,6 +54,8 @@ type Connector interface {
 
 	GetLeader(topic string, partition int32) (BrokerLink, error)
 
+	RefreshMetadata(topics []string)
+
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
 	Close() <-chan bool
@@ -276,7 +278,7 @@ func (dc *DefaultConnector) Fetch(topic string, partition int32, offset int64) (
 
 	if response.Error(topic, partition) == ErrNotLeaderForPartition {
 		Infof(dc, "Sent a fetch reqest to a non-leader broker. Refleshing metadata for topic %s and retrying the request", topic)
-		dc.refreshMetadata([]string{topic})
+		dc.RefreshMetadata([]string{topic})
 		response, err = dc.tryFetch(topic, partition, offset)
 	}
 
@@ -399,7 +401,7 @@ func (dc *DefaultConnector) closeBrokerLinks() {
 	}
 }
 
-func (dc *DefaultConnector) refreshMetadata(topics []string) {
+func (dc *DefaultConnector) RefreshMetadata(topics []string) {
 	if len(dc.bootstrapLinks) == 0 {
 		for i := 0; i < len(dc.config.BrokerList); i++ {
 			broker := dc.config.BrokerList[i]
@@ -478,7 +480,7 @@ func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, err
 
 func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries int) (*brokerLink, error) {
 	for i := 0; i <= retries; i++ {
-		dc.refreshMetadata([]string{topic})
+		dc.RefreshMetadata([]string{topic})
 		if link := dc.getLeader(topic, partition); link != nil {
 			return link, nil
 		}
@@ -634,7 +636,7 @@ func (dc *DefaultConnector) decode(bytes []byte, response Response) *DecodingErr
 
 func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
 	if len(dc.links) == 0 {
-		dc.refreshMetadata(nil)
+		dc.RefreshMetadata(nil)
 	}
 
 	response, err := dc.sendToAllLinks(dc.links, request, check)
