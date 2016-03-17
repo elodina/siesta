@@ -216,7 +216,7 @@ type DefaultConnector struct {
 	leaders        map[string]map[int32]*brokerLink
 	links          []*brokerLink
 	bootstrapLinks []*brokerLink
-	leaderLock     sync.RWMutex
+	lock           sync.RWMutex
 
 	//offset coordination part
 	offsetCoordinators map[string]int32
@@ -434,15 +434,19 @@ func (dc *DefaultConnector) RefreshMetadata(topics []string) {
 }
 
 func (dc *DefaultConnector) refreshLeaders(response *MetadataResponse) {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
 	brokers := make(map[int32]*brokerLink)
 	for _, broker := range response.Brokers {
 		brokers[broker.ID] = NewBrokerLink(broker, dc.config.KeepAlive, dc.config.KeepAliveTimeout, dc.config.MaxConnectionsPerBroker)
 	}
 
-	if len(brokers) != 0 && len(response.TopicsMetadata) != 0 {
-		dc.closeBrokerLinks()
-		dc.links = make([]*brokerLink, 0)
-	}
+	//TODO review this a bit later
+	//if len(brokers) != 0 && len(response.TopicsMetadata) != 0 {
+	//	dc.closeBrokerLinks()
+	//	dc.links = make([]*brokerLink, 0)
+	//}
 
 	for _, metadata := range response.TopicsMetadata {
 		for _, partitionMetadata := range metadata.PartitionsMetadata {
@@ -455,18 +459,18 @@ func (dc *DefaultConnector) refreshLeaders(response *MetadataResponse) {
 		}
 	}
 
-	for _, broker := range brokers {
-		found := false
-		for _, link := range dc.links {
-			if broker == link {
-				found = true
-				break
-			}
-		}
-		if !found {
-			broker.stop <- true
-		}
-	}
+	//for _, broker := range brokers {
+	//	found := false
+	//	for _, link := range dc.links {
+	//		if broker == link {
+	//			found = true
+	//			break
+	//		}
+	//	}
+	//	if !found {
+	//		broker.stop <- true
+	//	}
+	//}
 }
 
 func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, error) {
@@ -491,8 +495,8 @@ func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries 
 }
 
 func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
-	dc.leaderLock.RLock()
-	defer dc.leaderLock.RUnlock()
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 
 	leadersForTopic, exists := dc.leaders[topic]
 	if !exists {
@@ -504,8 +508,6 @@ func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink
 
 func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
 	Tracef(dc, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
-	dc.leaderLock.Lock()
-	defer dc.leaderLock.Unlock()
 
 	if _, exists := dc.leaders[topic]; !exists {
 		dc.leaders[topic] = make(map[int32]*brokerLink)
@@ -527,8 +529,8 @@ func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *bro
 }
 
 func (dc *DefaultConnector) removeLeader(topic string, partition int32) {
-	dc.leaderLock.Lock()
-	defer dc.leaderLock.Unlock()
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
 
 	if leadersForTopic, exists := dc.leaders[topic]; exists {
 		delete(leadersForTopic, partition)
@@ -574,12 +576,14 @@ func (dc *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, err
 	Debugf(dc, "Offset coordinator for group %s: %d", group, coordinatorID)
 
 	var brokerLink *brokerLink
+	dc.lock.RLock()
 	for _, link := range dc.links {
 		if link.broker.ID == coordinatorID {
 			brokerLink = link
 			break
 		}
 	}
+	dc.lock.RUnlock()
 
 	if brokerLink == nil {
 		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
@@ -635,8 +639,12 @@ func (dc *DefaultConnector) decode(bytes []byte, response Response) *DecodingErr
 }
 
 func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
+	dc.lock.RLock()
 	if len(dc.links) == 0 {
+		dc.lock.RUnlock()
 		dc.RefreshMetadata(nil)
+	} else {
+		dc.lock.RUnlock()
 	}
 
 	response, err := dc.sendToAllLinks(dc.links, request, check)
@@ -648,6 +656,8 @@ func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, c
 }
 
 func (dc *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request, check func([]byte) Response) (Response, error) {
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 	if len(links) == 0 {
 		return nil, errors.New("Empty broker list")
 	}
