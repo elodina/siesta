@@ -337,6 +337,7 @@ func (dc *DefaultConnector) tryFetch(topic string, partition int32, offset int64
 
 // GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 func (dc *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
+	Logger.Info("Getting offset for group %s, topic %s, partition %d", group, topic, partition)
 	coordinator, err := dc.getOffsetCoordinator(group)
 	if err != nil {
 		return InvalidOffset, err
