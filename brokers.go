@@ -69,7 +69,6 @@ type Brokers struct {
 	brokers          map[int32]*BrokerConnection
 	correlationIDs   *CorrelationIDGenerator
 	keepAliveTimeout time.Duration
-	stop             chan struct{}
 	lock             sync.RWMutex
 }
 
@@ -78,7 +77,6 @@ func NewBrokers(keepAliveTimeout time.Duration) *Brokers {
 		brokers:          make(map[int32]*BrokerConnection),
 		correlationIDs:   new(CorrelationIDGenerator),
 		keepAliveTimeout: keepAliveTimeout,
-		stop:             make(chan struct{}),
 	}
 }
 
@@ -143,10 +141,6 @@ func (b *Brokers) Remove(id int32) {
 
 func (b *Brokers) NextCorrelationID() int32 {
 	return b.correlationIDs.NextCorrelationID()
-}
-
-func (b *Brokers) Close() {
-	close(b.stop)
 }
 
 type CorrelationIDGenerator struct {

@@ -402,7 +402,6 @@ func (dc *DefaultConnector) GetLeader(topic string, partition int32) (*BrokerCon
 func (dc *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
-		dc.brokers.Close()
 		dc.bootstrapBrokers = nil
 		closed <- true
 	}()
