@@ -52,7 +52,7 @@ type Connector interface {
 	// CommitOffset commits the offset for a given group, topic and partition to Kafka. A part of new offset management API.
 	CommitOffset(group string, topic string, partition int32, offset int64) error
 
-	GetLeader(topic string, partition int32) (BrokerLink, error)
+	GetLeader(topic string, partition int32) (*BrokerConnection, error)
 
 	RefreshMetadata(topics []string)
 
@@ -212,11 +212,11 @@ func (cc *ConnectorConfig) Validate() error {
 
 // DefaultConnector is a default (and only one for now) Connector implementation for Siesta library.
 type DefaultConnector struct {
-	config         ConnectorConfig
-	leaders        map[string]map[int32]*brokerLink
-	links          []*brokerLink
-	bootstrapLinks []*brokerLink
-	lock           sync.RWMutex
+	config           ConnectorConfig
+	leaders          map[string]map[int32]int32
+	brokers          *Brokers
+	bootstrapBrokers []*BrokerConnection
+	lock             sync.RWMutex
 
 	//offset coordination part
 	offsetCoordinators map[string]int32
@@ -228,9 +228,31 @@ func NewDefaultConnector(config *ConnectorConfig) (*DefaultConnector, error) {
 		return nil, err
 	}
 
+	bootstrapConnections := make([]*BrokerConnection, len(config.BrokerList))
+	for i := 0; i < len(config.BrokerList); i++ {
+		broker := config.BrokerList[i]
+		hostPort := strings.Split(broker, ":")
+		if len(hostPort) != 2 {
+			return nil, fmt.Errorf("incorrect broker connection string: %s", broker)
+		}
+
+		port, err := strconv.Atoi(hostPort[1])
+		if err != nil {
+			return nil, fmt.Errorf("incorrect port in broker connection string: %s", broker)
+		}
+
+		bootstrapConnections[i] = NewBrokerConnection(&Broker{
+			ID:   -1,
+			Host: hostPort[0],
+			Port: int32(port),
+		}, config.KeepAliveTimeout)
+	}
+
 	connector := &DefaultConnector{
 		config:             *config,
-		leaders:            make(map[string]map[int32]*brokerLink),
+		leaders:            make(map[string]map[int32]int32),
+		bootstrapBrokers:   bootstrapConnections,
+		brokers:            NewBrokers(config.KeepAliveTimeout),
 		offsetCoordinators: make(map[string]int32),
 	}
 
@@ -286,20 +308,16 @@ func (dc *DefaultConnector) Fetch(topic string, partition int32, offset int64) (
 }
 
 func (dc *DefaultConnector) tryFetch(topic string, partition int32, offset int64) (*FetchResponse, error) {
-	link := dc.getLeader(topic, partition)
-	if link == nil {
-		leader, err := dc.tryGetLeader(topic, partition, dc.config.MetadataRetries)
-		if err != nil {
-			return nil, err
-		}
-		link = leader
+	brokerConnection, err := dc.GetLeader(topic, partition)
+	if err != nil {
+		return nil, err
 	}
 
 	request := new(FetchRequest)
 	request.MinBytes = dc.config.FetchMinBytes
 	request.MaxWait = dc.config.FetchMaxWaitTime
 	request.AddFetch(topic, partition, offset, dc.config.FetchSize)
-	bytes, err := dc.syncSendAndReceive(link, request)
+	bytes, err := dc.syncSendAndReceive(brokerConnection, request)
 	if err != nil {
 		dc.removeLeader(topic, partition)
 		return nil, err
@@ -366,17 +384,17 @@ func (dc *DefaultConnector) CommitOffset(group string, topic string, partition i
 	return fmt.Errorf("Could not get commit offset %d for group %s, topic %s, partition %d after %d retries", offset, group, topic, partition, dc.config.CommitOffsetRetries)
 }
 
-func (dc *DefaultConnector) GetLeader(topic string, partition int32) (BrokerLink, error) {
-	link := dc.getLeader(topic, partition)
-	if link == nil {
-		link, err := dc.tryGetLeader(topic, partition, dc.config.MetadataRetries)
+func (dc *DefaultConnector) GetLeader(topic string, partition int32) (*BrokerConnection, error) {
+	leader := dc.getLeader(topic, partition)
+	if leader == -1 {
+		brokerConnection, err := dc.tryGetLeader(topic, partition, dc.config.MetadataRetries)
 		if err != nil {
 			return nil, err
 		}
-		return link, nil
+		return brokerConnection, nil
 	}
 
-	return link, nil
+	return dc.brokers.Get(leader), nil
 }
 
 // Close tells the Connector to close all existing connections and stop.
@@ -384,49 +402,19 @@ func (dc *DefaultConnector) GetLeader(topic string, partition int32) (BrokerLink
 func (dc *DefaultConnector) Close() <-chan bool {
 	closed := make(chan bool)
 	go func() {
-		dc.closeBrokerLinks()
-		for _, link := range dc.bootstrapLinks {
-			link.stop <- true
-		}
-		dc.bootstrapLinks = nil
-		dc.links = nil
+		dc.brokers.Close()
+		dc.bootstrapBrokers = nil
 		closed <- true
 	}()
 
 	return closed
 }
 
-func (dc *DefaultConnector) closeBrokerLinks() {
-	for _, link := range dc.links {
-		link.stop <- true
-	}
-}
-
 func (dc *DefaultConnector) RefreshMetadata(topics []string) {
-	if len(dc.bootstrapLinks) == 0 {
-		for i := 0; i < len(dc.config.BrokerList); i++ {
-			broker := dc.config.BrokerList[i]
-			hostPort := strings.Split(broker, ":")
-			if len(hostPort) != 2 {
-				panic(fmt.Sprintf("incorrect broker connection string: %s", broker))
-			}
-
-			port, err := strconv.Atoi(hostPort[1])
-			if err != nil {
-				panic(fmt.Sprintf("incorrect port in broker connection string: %s", broker))
-			}
-
-			dc.bootstrapLinks = append(dc.bootstrapLinks, NewBrokerLink(&Broker{ID: -1, Host: hostPort[0], Port: int32(port)},
-				dc.config.KeepAlive,
-				dc.config.KeepAliveTimeout,
-				dc.config.MaxConnectionsPerBroker))
-		}
-	}
-
-	response, err := dc.sendToAllLinks(dc.links, NewMetadataRequest(topics), dc.topicMetadataValidator(topics))
+	response, err := dc.sendToAllBrokers(dc.brokers.GetAll(), NewMetadataRequest(topics), dc.topicMetadataValidator(topics))
 	if err != nil {
 		Warnf(dc, "Could not get topic metadata from all known brokers, trying bootstrap brokers...: %s", err)
-		if response, err = dc.sendToAllLinks(dc.bootstrapLinks, NewMetadataRequest(topics), dc.topicMetadataValidator(topics)); err != nil {
+		if response, err = dc.sendToAllBrokers(dc.bootstrapBrokers, NewMetadataRequest(topics), dc.topicMetadataValidator(topics)); err != nil {
 			Errorf(dc, "Could not get topic metadata from all known brokers: %s", err)
 			return
 		}
@@ -438,40 +426,15 @@ func (dc *DefaultConnector) refreshLeaders(topics []string, response *MetadataRe
 	dc.lock.Lock()
 	defer dc.lock.Unlock()
 
-	brokers := make(map[int32]*brokerLink)
 	for _, broker := range response.Brokers {
-		brokers[broker.ID] = NewBrokerLink(broker, dc.config.KeepAlive, dc.config.KeepAliveTimeout, dc.config.MaxConnectionsPerBroker)
+		dc.brokers.Update(broker)
 	}
-
-	//TODO review this a bit later
-	//if len(brokers) != 0 && len(response.TopicsMetadata) != 0 {
-	//	dc.closeBrokerLinks()
-	//	dc.links = make([]*brokerLink, 0)
-	//}
 
 	for _, metadata := range response.TopicsMetadata {
 		for _, partitionMetadata := range metadata.PartitionsMetadata {
-			if leader, exists := brokers[partitionMetadata.Leader]; exists {
-				dc.putLeader(metadata.Topic, partitionMetadata.PartitionID, leader)
-			} else {
-				Warnf(dc, "Topic Metadata response has no leader present for topic %s, parition %d", metadata.Topic, partitionMetadata.PartitionID)
-				//TODO: warn about incomplete broker list
-			}
+			dc.putLeader(metadata.Topic, partitionMetadata.PartitionID, partitionMetadata.Leader)
 		}
 	}
-
-	//for _, broker := range brokers {
-	//	found := false
-	//	for _, link := range dc.links {
-	//		if broker == link {
-	//			found = true
-	//			break
-	//		}
-	//	}
-	//	if !found {
-	//		broker.stop <- true
-	//	}
-	//}
 }
 
 func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, error) {
@@ -483,11 +446,11 @@ func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, err
 	return nil, err
 }
 
-func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries int) (*brokerLink, error) {
+func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries int) (*BrokerConnection, error) {
 	for i := 0; i <= retries; i++ {
 		dc.RefreshMetadata([]string{topic})
-		if link := dc.getLeader(topic, partition); link != nil {
-			return link, nil
+		if leader := dc.getLeader(topic, partition); leader != -1 {
+			return dc.brokers.Get(leader), nil
 		}
 		time.Sleep(dc.config.MetadataBackoff)
 	}
@@ -495,35 +458,28 @@ func (dc *DefaultConnector) tryGetLeader(topic string, partition int32, retries 
 	return nil, fmt.Errorf("Could not get leader for %s:%d after %d retries", topic, partition, retries)
 }
 
-func (dc *DefaultConnector) getLeader(topic string, partition int32) *brokerLink {
+func (dc *DefaultConnector) getLeader(topic string, partition int32) int32 {
 	dc.lock.RLock()
 	defer dc.lock.RUnlock()
 
 	leadersForTopic, exists := dc.leaders[topic]
 	if !exists {
-		return nil
+		return -1
 	}
 
-	return leadersForTopic[partition]
+	leader, exists := leadersForTopic[partition]
+	if !exists {
+		return -1
+	}
+
+	return leader
 }
 
-func (dc *DefaultConnector) putLeader(topic string, partition int32, leader *brokerLink) {
-	Tracef(dc, "putLeader for topic %s, partition %d - %s", topic, partition, leader.broker)
+func (dc *DefaultConnector) putLeader(topic string, partition int32, leader int32) {
+	Tracef(dc, "putLeader for topic %s, partition %d - %d", topic, partition, leader)
 
 	if _, exists := dc.leaders[topic]; !exists {
-		dc.leaders[topic] = make(map[int32]*brokerLink)
-	}
-
-	exists := false
-	for _, link := range dc.links {
-		if *link.broker == *leader.broker {
-			exists = true
-			break
-		}
-	}
-
-	if !exists {
-		dc.links = append(dc.links, leader)
+		dc.leaders[topic] = make(map[int32]int32)
 	}
 
 	dc.leaders[topic][partition] = leader
@@ -565,7 +521,7 @@ func (dc *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
 	return nil
 }
 
-func (dc *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, error) {
+func (dc *DefaultConnector) getOffsetCoordinator(group string) (*BrokerConnection, error) {
 	coordinatorID, exists := dc.offsetCoordinators[group]
 	if !exists {
 		err := dc.refreshOffsetCoordinator(group)
@@ -577,21 +533,12 @@ func (dc *DefaultConnector) getOffsetCoordinator(group string) (*brokerLink, err
 
 	Debugf(dc, "Offset coordinator for group %s: %d", group, coordinatorID)
 
-	var brokerLink *brokerLink
-	dc.lock.RLock()
-	for _, link := range dc.links {
-		if link.broker.ID == coordinatorID {
-			brokerLink = link
-			break
-		}
-	}
-	dc.lock.RUnlock()
-
-	if brokerLink == nil {
+	brokerConnection := dc.brokers.Get(coordinatorID)
+	if brokerConnection == nil {
 		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
 	}
 
-	return brokerLink, nil
+	return brokerConnection, nil
 }
 
 func (dc *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
@@ -642,39 +589,40 @@ func (dc *DefaultConnector) decode(bytes []byte, response Response) *DecodingErr
 
 func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, check func([]byte) Response) (Response, error) {
 	dc.lock.RLock()
-	if len(dc.links) == 0 {
+	brokerConnection := dc.brokers.GetAll()
+	if len(brokerConnection) == 0 {
 		dc.lock.RUnlock()
 		dc.RefreshMetadata(nil)
 	} else {
 		dc.lock.RUnlock()
 	}
 
-	response, err := dc.sendToAllLinks(dc.links, request, check)
+	response, err := dc.sendToAllBrokers(brokerConnection, request, check)
 	if err != nil {
-		response, err = dc.sendToAllLinks(dc.bootstrapLinks, request, check)
+		response, err = dc.sendToAllBrokers(dc.bootstrapBrokers, request, check)
 	}
 
 	return response, err
 }
 
-func (dc *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request, check func([]byte) Response) (Response, error) {
+func (dc *DefaultConnector) sendToAllBrokers(brokerConnections []*BrokerConnection, request Request, check func([]byte) Response) (Response, error) {
 	dc.lock.RLock()
 	defer dc.lock.RUnlock()
-	if len(links) == 0 {
+	if len(brokerConnections) == 0 {
 		return nil, errors.New("Empty broker list")
 	}
 
-	responses := make(chan *rawResponseAndError, len(links))
-	for i := 0; i < len(links); i++ {
-		link := links[i]
+	responses := make(chan *rawResponseAndError, len(brokerConnections))
+	for i := 0; i < len(brokerConnections); i++ {
+		brokerConnection := brokerConnections[i]
 		go func() {
-			bytes, err := dc.syncSendAndReceive(link, request)
-			responses <- &rawResponseAndError{bytes, link, err}
+			bytes, err := dc.syncSendAndReceive(brokerConnection, request)
+			responses <- &rawResponseAndError{bytes, brokerConnection, err}
 		}()
 	}
 
 	var response *rawResponseAndError
-	for i := 0; i < len(links); i++ {
+	for i := 0; i < len(brokerConnections); i++ {
 		response = <-responses
 		if response.err == nil {
 			if checkResult := check(response.bytes); checkResult != nil {
@@ -683,33 +631,28 @@ func (dc *DefaultConnector) sendToAllLinks(links []*brokerLink, request Request,
 
 			response.err = errors.New("Check result did not pass")
 		}
-
-		//		Infof(dc, "Could not process request with broker %s:%d", response.link.broker.Host, response.link.broker.Port)
 	}
 
 	return nil, response.err
 }
 
-func (dc *DefaultConnector) syncSendAndReceive(link *brokerLink, request Request) ([]byte, error) {
-	id, conn, err := link.GetConnection()
+func (dc *DefaultConnector) syncSendAndReceive(broker *BrokerConnection, request Request) ([]byte, error) {
+	conn, err := broker.GetConnection()
 	if err != nil {
-		link.Failed()
 		return nil, err
 	}
 
+	id := dc.brokers.NextCorrelationID()
 	if err := dc.send(id, conn, request); err != nil {
-		link.Failed()
 		return nil, err
 	}
 
 	bytes, err := dc.receive(conn)
 	if err != nil {
-		link.Failed()
 		return nil, err
 	}
 
-	link.Succeeded()
-	link.connectionPool.Return(conn)
+	broker.ReleaseConnection(conn)
 	return bytes, err
 }
 
@@ -808,78 +751,8 @@ func (dc *DefaultConnector) offsetValidator(bytes []byte) Response {
 	return response
 }
 
-type BrokerLink interface {
-	Failed()
-	Succeeded()
-	GetConnection() (int32, *net.TCPConn, error)
-	ReturnConnection(*net.TCPConn)
-}
-
-type brokerLink struct {
-	sync.RWMutex
-	broker                    *Broker
-	connectionPool            *connectionPool
-	lastConnectTime           time.Time
-	lastSuccessfulConnectTime time.Time
-	failedAttempts            int
-	correlationIds            chan int32
-	stop                      chan bool
-}
-
-func NewBrokerLink(broker *Broker, keepAlive bool, keepAliveTimeout time.Duration, maxConnectionsPerBroker int) *brokerLink {
-	brokerConnect := fmt.Sprintf("%s:%d", broker.Host, broker.Port)
-	correlationIds := make(chan int32)
-	stop := make(chan bool)
-
-	go correlationIDGenerator(correlationIds, stop)
-
-	return &brokerLink{
-		broker:         broker,
-		connectionPool: newConnectionPool(brokerConnect, maxConnectionsPerBroker, keepAlive, keepAliveTimeout),
-		correlationIds: correlationIds,
-		stop:           stop,
-	}
-}
-
-func (bl *brokerLink) Failed() {
-	bl.Lock()
-	defer bl.Unlock()
-	bl.lastConnectTime = time.Now()
-	bl.failedAttempts++
-}
-
-func (bl *brokerLink) Succeeded() {
-	bl.Lock()
-	defer bl.Unlock()
-	timestamp := time.Now()
-	bl.lastConnectTime = timestamp
-	bl.lastSuccessfulConnectTime = timestamp
-}
-
-func (bl *brokerLink) ReturnConnection(conn *net.TCPConn) {
-	bl.connectionPool.Return(conn)
-}
-
-func (bl *brokerLink) GetConnection() (int32, *net.TCPConn, error) {
-	correlationID := <-bl.correlationIds
-	conn, err := bl.connectionPool.Borrow()
-	return correlationID, conn, err
-}
-
-func correlationIDGenerator(out chan int32, stop chan bool) {
-	var correlationID int32
-	for {
-		select {
-		case out <- correlationID:
-			correlationID++
-		case <-stop:
-			return
-		}
-	}
-}
-
 type rawResponseAndError struct {
-	bytes []byte
-	link  BrokerLink
-	err   error
+	bytes            []byte
+	brokerConnection *BrokerConnection
+	err              error
 }

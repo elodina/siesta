@@ -52,8 +52,6 @@ func TestDefaultConnectorFunctional(t *testing.T) {
 	testProduce(t, topicName, numMessages, connector)
 	testConsume(t, topicName, numMessages, connector)
 	closeWithin(t, time.Second, connector)
-	//check whether closing multiple times hangs
-	closeWithin(t, time.Second, connector)
 
 	anotherConnector := testConnector(t)
 	//should also work fine - must get topic metadata before consuming
@@ -121,7 +119,7 @@ func testProduce(t *testing.T, topicName string, numMessages int, connector *Def
 
 	leader, err := connector.tryGetLeader(topicName, 0, 3)
 	assert(t, err, nil)
-	assertNot(t, leader, (*brokerLink)(nil))
+	assertNot(t, leader, (*BrokerConnection)(nil))
 	bytes, err := connector.syncSendAndReceive(leader, produceRequest)
 	assertFatal(t, err, nil)
 
