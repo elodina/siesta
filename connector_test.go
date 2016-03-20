@@ -34,7 +34,10 @@ func init() {
 	conn, err := net.Dial("tcp", brokerAddr)
 	if err == nil {
 		brokerUp = true
-		conn.Close()
+		err = conn.Close()
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 

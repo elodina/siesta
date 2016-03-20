@@ -308,7 +308,7 @@ func (dc *DefaultConnector) Fetch(topic string, partition int32, offset int64) (
 		Infof(dc, "Sent a fetch reqest to a non-leader broker. Refleshing metadata for topic %s and retrying the request", topic)
 		err = dc.metadata.Refresh([]string{topic})
 		if err != nil {
-
+			return nil, err
 		}
 		response, err = dc.tryFetch(topic, partition, offset)
 	}
@@ -560,7 +560,10 @@ func (dc *DefaultConnector) sendToAllAndReturnFirstSuccessful(request Request, c
 	brokerConnection := dc.metadata.Brokers.GetAll()
 	if len(brokerConnection) == 0 {
 		dc.lock.RUnlock()
-		dc.metadata.Refresh(nil)
+		err := dc.metadata.Refresh(nil)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		dc.lock.RUnlock()
 	}
@@ -631,15 +634,22 @@ func (dc *DefaultConnector) send(correlationID int32, conn *net.TCPConn, request
 	encoder := NewBinaryEncoder(bytes)
 	writer.Write(encoder)
 
-	conn.SetWriteDeadline(time.Now().Add(dc.config.WriteTimeout))
-	_, err := conn.Write(bytes)
+	err := conn.SetWriteDeadline(time.Now().Add(dc.config.WriteTimeout))
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(bytes)
 	return err
 }
 
 func (dc *DefaultConnector) receive(conn *net.TCPConn) ([]byte, error) {
-	conn.SetReadDeadline(time.Now().Add(dc.config.ReadTimeout))
+	err := conn.SetReadDeadline(time.Now().Add(dc.config.ReadTimeout))
+	if err != nil {
+		return nil, err
+	}
+
 	header := make([]byte, 8)
-	_, err := io.ReadFull(conn, header)
+	_, err = io.ReadFull(conn, header)
 	if err != nil {
 		return nil, err
 	}

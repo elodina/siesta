@@ -42,8 +42,14 @@ func NewBrokerConnection(broker *Broker, keepAliveTimeout time.Duration) *Broker
 					return err
 				}
 
-				conn.SetKeepAlive(true)
-				conn.SetKeepAlivePeriod(keepAliveTimeout)
+				err = conn.SetKeepAlive(true)
+				if err != nil {
+					return err
+				}
+				err = conn.SetKeepAlivePeriod(keepAliveTimeout)
+				if err != nil {
+					return err
+				}
 
 				return conn
 			},
