@@ -46,20 +46,20 @@ func TestDefaultConnectorFunctional(t *testing.T) {
 		t.Skip("Broker is not running. Please spin up the broker at localhost:9092 for this test to work.")
 	}
 
-	//numMessages := 1000
+	numMessages := 1000
 	topicName := fmt.Sprintf("siesta-%d", time.Now().Unix())
 
 	connector := testConnector(t)
 	testTopicMetadata(t, topicName, connector)
 	testOffsetStorage(t, topicName, connector)
-	//testProduce(t, topicName, numMessages, connector)
-	//testConsume(t, topicName, numMessages, connector)
-	//closeWithin(t, time.Second, connector)
+	testProduce(t, topicName, numMessages, connector)
+	testConsume(t, topicName, numMessages, connector)
+	closeWithin(t, time.Second, connector)
 
-	//anotherConnector := testConnector(t)
+	anotherConnector := testConnector(t)
 	//should also work fine - must get topic metadata before consuming
-	//testConsume(t, topicName, numMessages, anotherConnector)
-	//closeWithin(t, time.Second, anotherConnector)
+	testConsume(t, topicName, numMessages, anotherConnector)
+	closeWithin(t, time.Second, anotherConnector)
 }
 
 func testTopicMetadata(t *testing.T, topicName string, connector *DefaultConnector) {
