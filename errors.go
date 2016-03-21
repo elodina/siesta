@@ -119,6 +119,12 @@ var ErrGroupAuthorizationFailed = errors.New("The client is not authorized to ac
 // A mapping for Kafka error code 31
 var ErrClusterAuthorizationFailed = errors.New("The client is not authorized to use an inter-broker or administrative API.")
 
+// ErrFailedToGetMetadata happens when TopicMetadataResponse does not contain metadata for requested topic.
+var ErrFailedToGetMetadata = errors.New("Failed to get topic metadata.")
+
+// ErrFailedToGetLeader happens when TopicMetadataResponse does not contain leader metadata for requested topic and partition.
+var ErrFailedToGetLeader = errors.New("Failed to get leader.")
+
 // Mapping between Kafka error codes and actual error messages.
 var BrokerErrors = map[int16]error{
 	-1: ErrUnknown,

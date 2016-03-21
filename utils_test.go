@@ -57,7 +57,10 @@ func checkErr(t *testing.T, err error) {
 
 func randomBytes(n int) []byte {
 	b := make([]byte, n)
-	crand.Read(b)
+	_, err := crand.Read(b)
+	if err != nil {
+		panic(err)
+	}
 	return b
 }
 

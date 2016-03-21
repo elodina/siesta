@@ -34,7 +34,10 @@ func init() {
 	conn, err := net.Dial("tcp", brokerAddr)
 	if err == nil {
 		brokerUp = true
-		conn.Close()
+		err = conn.Close()
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -117,7 +120,7 @@ func testProduce(t *testing.T, topicName string, numMessages int, connector *Def
 		})
 	}
 
-	leader, err := connector.tryGetLeader(topicName, 0, 3)
+	leader, err := connector.GetLeader(topicName, 0)
 	assert(t, err, nil)
 	assertNot(t, leader, (*BrokerConnection)(nil))
 	bytes, err := connector.syncSendAndReceive(leader, produceRequest)
