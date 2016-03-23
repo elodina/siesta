@@ -117,9 +117,9 @@ func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
 }
 
 func (m *Metadata) Refresh(topics []string) error {
+	Logger.Info("Refreshing metadata for topics %v", topics)
 	m.metadataLock.Lock()
 	defer m.metadataLock.Unlock()
-	Logger.Info("Refreshing metadata for topics %v", topics)
 
 	topicMetadataResponse, err := m.connector.GetTopicMetadata(topics)
 	if err != nil {
