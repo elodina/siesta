@@ -54,7 +54,8 @@ type Connector interface {
 
 	GetLeader(topic string, partition int32) (*BrokerConnection, error)
 
-	RefreshMetadata(topics []string) error
+	// Metadata returns a structure that holds all topic and broker metadata.
+	Metadata() *Metadata
 
 	// Tells the Connector to close all existing connections and stop.
 	// This method is NOT blocking but returns a channel which will get a single value once the closing is finished.
@@ -418,13 +419,8 @@ func (dc *DefaultConnector) Close() <-chan bool {
 	return closed
 }
 
-func (dc *DefaultConnector) RefreshMetadata(topics []string) error {
-	err := dc.metadata.Refresh(topics)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (dc *DefaultConnector) Metadata() *Metadata {
+	return dc.metadata
 }
 
 func (dc *DefaultConnector) getMetadata(topics []string) (*MetadataResponse, error) {
