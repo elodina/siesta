@@ -74,7 +74,7 @@ func (m *Metadata) TopicMetadata(topic string) (map[int32]int32, error) {
 	topicMetadata, ttl := m.topicMetadata(topic)
 
 	if topicMetadata == nil || ttl.Add(m.metadataTTL).Before(time.Now()) {
-		err := m.Refresh([]string{topic})
+		err := m.refreshIfExpired(topic, ttl)
 		if err != nil {
 			return nil, err
 		}
@@ -105,6 +105,21 @@ func (m *Metadata) PartitionsFor(topic string) ([]int32, error) {
 	return partitions, nil
 }
 
+func (m *Metadata) Refresh(topics []string) error {
+	Logger.Info("Refreshing metadata for topics %v", topics)
+	m.metadataLock.Lock()
+	defer m.metadataLock.Unlock()
+
+	return m.refresh(topics)
+}
+
+func (m *Metadata) Invalidate(topic string) {
+	m.metadataLock.Lock()
+	defer m.metadataLock.Unlock()
+
+	m.metadataExpires[topic] = time.Unix(0, 0)
+}
+
 func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
 	m.metadataLock.RLock()
 	defer m.metadataLock.RUnlock()
@@ -116,11 +131,18 @@ func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
 	return metadataCopy, m.metadataExpires[topic]
 }
 
-func (m *Metadata) Refresh(topics []string) error {
-	Logger.Info("Refreshing metadata for topics %v", topics)
+func (m *Metadata) refreshIfExpired(topic string, ttl time.Time) error {
 	m.metadataLock.Lock()
 	defer m.metadataLock.Unlock()
 
+	if ttl.Add(m.metadataTTL).Before(time.Now()) {
+		return m.refresh([]string{topic})
+	}
+
+	return nil
+}
+
+func (m *Metadata) refresh(topics []string) error {
 	topicMetadataResponse, err := m.connector.GetTopicMetadata(topics)
 	if err != nil {
 		return err
@@ -150,13 +172,6 @@ func (m *Metadata) Refresh(topics []string) error {
 	}
 
 	return nil
-}
-
-func (m *Metadata) Invalidate(topic string) {
-	m.metadataLock.Lock()
-	defer m.metadataLock.Unlock()
-
-	m.metadataExpires[topic] = time.Unix(0, 0)
 }
 
 type Int32Slice []int32
