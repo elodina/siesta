@@ -54,6 +54,8 @@ type Connector interface {
 
 	GetLeader(topic string, partition int32) (*BrokerConnection, error)
 
+	GetConsumerMetadata(group string) (*ConsumerMetadataResponse, error)
+
 	// Metadata returns a structure that holds all topic and broker metadata.
 	Metadata() *Metadata
 
@@ -348,7 +350,7 @@ func (dc *DefaultConnector) tryFetch(topic string, partition int32, offset int64
 // GetOffset gets the offset for a given group, topic and partition from Kafka. A part of new offset management API.
 func (dc *DefaultConnector) GetOffset(group string, topic string, partition int32) (int64, error) {
 	Logger.Info("Getting offset for group %s, topic %s, partition %d", group, topic, partition)
-	coordinator, err := dc.getOffsetCoordinator(group)
+	coordinator, err := dc.metadata.OffsetCoordinator(group)
 	if err != nil {
 		return InvalidOffset, err
 	}
@@ -458,55 +460,34 @@ func (dc *DefaultConnector) getLeaderRetryBackoff(topic string, partition int32,
 	return -1, err
 }
 
-func (dc *DefaultConnector) refreshOffsetCoordinator(group string) error {
+func (dc *DefaultConnector) GetConsumerMetadata(group string) (*ConsumerMetadataResponse, error) {
 	for i := 0; i <= dc.config.ConsumerMetadataRetries; i++ {
-		err := dc.tryRefreshOffsetCoordinator(group)
+		metadata, err := dc.tryGetConsumerMetadata(group)
 		if err == nil {
-			return nil
+			return metadata, nil
 		}
 
 		Debugf(dc, "Failed to get consumer coordinator for group %s after %d try: %s", group, i, err)
 		time.Sleep(dc.config.ConsumerMetadataBackoff)
 	}
 
-	return fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, dc.config.ConsumerMetadataRetries)
+	return nil, fmt.Errorf("Could not get consumer coordinator for group %s after %d retries", group, dc.config.ConsumerMetadataRetries)
 }
 
-func (dc *DefaultConnector) tryRefreshOffsetCoordinator(group string) error {
+func (dc *DefaultConnector) tryGetConsumerMetadata(group string) (*ConsumerMetadataResponse, error) {
 	request := NewConsumerMetadataRequest(group)
 
 	response, err := dc.sendToAllAndReturnFirstSuccessful(request, dc.consumerMetadataValidator)
 	if err != nil {
 		Infof(dc, "Could not get consumer metadata from all known brokers: %s", err)
-		return err
-	}
-	dc.offsetCoordinators[group] = response.(*ConsumerMetadataResponse).Coordinator.ID
-
-	return nil
-}
-
-func (dc *DefaultConnector) getOffsetCoordinator(group string) (*BrokerConnection, error) {
-	coordinatorID, exists := dc.offsetCoordinators[group]
-	if !exists {
-		err := dc.refreshOffsetCoordinator(group)
-		if err != nil {
-			return nil, err
-		}
-		coordinatorID = dc.offsetCoordinators[group]
+		return nil, err
 	}
 
-	Debugf(dc, "Offset coordinator for group %s: %d", group, coordinatorID)
-
-	brokerConnection := dc.metadata.Brokers.Get(coordinatorID)
-	if brokerConnection == nil {
-		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
-	}
-
-	return brokerConnection, nil
+	return response.(*ConsumerMetadataResponse), nil
 }
 
 func (dc *DefaultConnector) tryCommitOffset(group string, topic string, partition int32, offset int64) error {
-	coordinator, err := dc.getOffsetCoordinator(group)
+	coordinator, err := dc.metadata.OffsetCoordinator(group)
 	if err != nil {
 		return err
 	}

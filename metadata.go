@@ -16,6 +16,7 @@ limitations under the License. */
 package siesta
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -28,15 +29,20 @@ type Metadata struct {
 	metadata        map[string]map[int32]int32
 	metadataExpires map[string]time.Time
 	metadataLock    sync.RWMutex
+
+	//offset coordination part
+	offsetCoordinators    map[string]int32
+	offsetCoordinatorLock sync.RWMutex
 }
 
 func NewMetadata(connector Connector, brokers *Brokers, metadataTTL time.Duration) *Metadata {
 	return &Metadata{
-		Brokers:         brokers,
-		connector:       connector,
-		metadataTTL:     metadataTTL,
-		metadata:        make(map[string]map[int32]int32),
-		metadataExpires: make(map[string]time.Time),
+		Brokers:            brokers,
+		connector:          connector,
+		metadataTTL:        metadataTTL,
+		metadata:           make(map[string]map[int32]int32),
+		metadataExpires:    make(map[string]time.Time),
+		offsetCoordinators: make(map[string]int32),
 	}
 }
 
@@ -118,6 +124,43 @@ func (m *Metadata) Invalidate(topic string) {
 	defer m.metadataLock.Unlock()
 
 	m.metadataExpires[topic] = time.Unix(0, 0)
+}
+
+func (m *Metadata) OffsetCoordinator(group string) (*BrokerConnection, error) {
+	m.offsetCoordinatorLock.RLock()
+	coordinatorID, exists := m.offsetCoordinators[group]
+	m.offsetCoordinatorLock.RUnlock()
+
+	if !exists {
+		err := m.refreshOffsetCoordinator(group)
+		if err != nil {
+			return nil, err
+		}
+
+		m.offsetCoordinatorLock.RLock()
+		coordinatorID = m.offsetCoordinators[group]
+		m.offsetCoordinatorLock.RUnlock()
+	}
+
+	brokerConnection := m.Brokers.Get(coordinatorID)
+	if brokerConnection == nil {
+		return nil, fmt.Errorf("Could not find broker with node id %d", coordinatorID)
+	}
+
+	return brokerConnection, nil
+}
+
+func (m *Metadata) refreshOffsetCoordinator(group string) error {
+	m.offsetCoordinatorLock.Lock()
+	defer m.offsetCoordinatorLock.Unlock()
+
+	metadata, err := m.connector.GetConsumerMetadata(group)
+	if err != nil {
+		return err
+	}
+	m.offsetCoordinators[group] = metadata.Coordinator.ID
+
+	return nil
 }
 
 func (m *Metadata) topicMetadata(topic string) (map[int32]int32, time.Time) {
