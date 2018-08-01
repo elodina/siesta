@@ -187,7 +187,7 @@ func (m *Metadata) refreshIfExpired(topic string, ttl time.Time) error {
 
 func (m *Metadata) refresh(topics []string) error {
 	topicMetadataResponse, err := m.connector.GetTopicMetadata(topics)
-	if err != nil {
+	if err != nil && err != ErrReplicaNotAvailable {
 		return err
 	}
 
@@ -196,13 +196,13 @@ func (m *Metadata) refresh(topics []string) error {
 	}
 
 	for _, topicMetadata := range topicMetadataResponse.TopicsMetadata {
-		if topicMetadata.Error != ErrNoError {
+		if topicMetadata.Error != ErrNoError && topicMetadata.Error != ErrReplicaNotAvailable {
 			return topicMetadata.Error
 		}
 
 		partitionLeaders := make(map[int32]int32)
 		for _, partitionMetadata := range topicMetadata.PartitionsMetadata {
-			if partitionMetadata.Error != ErrNoError {
+			if partitionMetadata.Error != ErrNoError && partitionMetadata.Error != ErrReplicaNotAvailable {
 				return partitionMetadata.Error
 			}
 
